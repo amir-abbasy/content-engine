@@ -1,0 +1,118 @@
+{
+  "$schema": "./pipeline.schema.json",
+  "name": "algo-trading-reel-01",
+  "app": {
+    "url": "http://localhost:3000/",
+    "viewport": { "width": 1920, "height": 1080 },
+    "waitForPyodide": true,
+    "pyodideLoaderSelector": ".app-pyodide-loader",
+    "readySelector": "#main-chart",
+    "readyTimeoutMs": 120000
+  },
+  "record": {
+    "browser": "chromium",
+    "headless": false,
+    "timelineOffsetMs": 0,
+    "settleMs": 600
+  },
+  "output": {
+    "dir": "output",
+    "resolution": { "width": 1080, "height": 1920 },
+    "fps": 30,
+    "fitMode": "cover",
+    "keepRaw": true
+  },
+  "scenes": [
+    {
+      "id": "01-build-strategy",
+      "description": "Build a Candles -> EMA(20)+EMA(50) -> Plot strategy left-to-right via right-click search; the camera pans to follow each new node.",
+      "setup": [
+        { "type": "press", "key": "Digit2", "shift": true },
+        { "type": "wait", "ms": 500 },
+        { "type": "injectFlow", "file": "flows/ema-plot.json" },
+        { "type": "wait", "ms": 1300 },
+        { "type": "injectFlow", "file": "flows/ema-plot.json", "nodeCount": 0 },
+        { "type": "wait", "ms": 400 }
+      ],
+      "target": { "selector": ".react-flow", "aspect": "9:16", "anchor": "center" },
+      "waitBeforeMs": 400,
+      "actions": [
+        { "type": "rightClick", "selector": ".react-flow__pane", "position": { "x": 715, "y": 192 } },
+        { "type": "wait", "ms": 650 },
+        { "type": "fill", "selector": "input[placeholder=\"Search nodes...\"]", "text": "ohlcv" },
+        { "type": "wait", "ms": 750 },
+        { "type": "click", "selector": "[role=\"menuitem\"]:has-text(\"Candles\")" },
+        { "type": "wait", "ms": 600 },
+        { "type": "injectFlow", "file": "flows/ema-plot.json", "nodeCount": 1 },
+        { "type": "wait", "ms": 250 },
+        { "type": "focus", "selector": ".react-flow__node[data-id=\"1\"]" },
+        { "type": "wait", "ms": 1100 },
+
+        { "type": "rightClick", "selector": ".react-flow__pane", "position": { "x": 715, "y": 192 } },
+        { "type": "wait", "ms": 650 },
+        { "type": "fill", "selector": "input[placeholder=\"Search nodes...\"]", "text": "ta.ema" },
+        { "type": "wait", "ms": 750 },
+        { "type": "click", "selector": "[role=\"menuitem\"]" },
+        { "type": "wait", "ms": 600 },
+        { "type": "injectFlow", "file": "flows/ema-plot.json", "nodeCount": 2 },
+        { "type": "wait", "ms": 250 },
+        { "type": "focus", "selector": ".react-flow__node[data-id=\"1\"]" },
+        { "type": "wait", "ms": 300 },
+        { "type": "focus", "selector": ".react-flow__node[data-id=\"2\"]" },
+        { "type": "wait", "ms": 900 },
+
+        { "type": "rightClick", "selector": ".react-flow__pane", "position": { "x": 715, "y": 192 } },
+        { "type": "wait", "ms": 650 },
+        { "type": "fill", "selector": "input[placeholder=\"Search nodes...\"]", "text": "ta.ema" },
+        { "type": "wait", "ms": 750 },
+        { "type": "click", "selector": "[role=\"menuitem\"]" },
+        { "type": "wait", "ms": 600 },
+        { "type": "injectFlow", "file": "flows/ema-plot.json", "nodeCount": 3 },
+        { "type": "wait", "ms": 250 },
+        { "type": "focus", "selector": ".react-flow__node[data-id=\"2\"]" },
+        { "type": "wait", "ms": 300 },
+        { "type": "focus", "selector": ".react-flow__node[data-id=\"3\"]" },
+        { "type": "wait", "ms": 900 },
+
+        { "type": "rightClick", "selector": ".react-flow__pane", "position": { "x": 715, "y": 192 } },
+        { "type": "wait", "ms": 650 },
+        { "type": "fill", "selector": "input[placeholder=\"Search nodes...\"]", "text": "plot" },
+        { "type": "wait", "ms": 750 },
+        { "type": "click", "selector": "[role=\"menuitem\"]:has(:text-is(\"Plot\"))" },
+        { "type": "wait", "ms": 600 },
+        { "type": "injectFlow", "file": "flows/ema-plot.json", "nodeCount": 4 },
+        { "type": "wait", "ms": 250 },
+        { "type": "focus", "selector": ".react-flow__node[data-id=\"3\"]" },
+        { "type": "wait", "ms": 300 },
+        { "type": "focus", "selector": ".react-flow__node[data-id=\"4\"]" },
+        { "type": "wait", "ms": 900 },
+
+        { "type": "rightClick", "selector": ".react-flow__pane", "position": { "x": 715, "y": 192 } },
+        { "type": "wait", "ms": 650 },
+        { "type": "fill", "selector": "input[placeholder=\"Search nodes...\"]", "text": "plot" },
+        { "type": "wait", "ms": 750 },
+        { "type": "click", "selector": "[role=\"menuitem\"]:has(:text-is(\"Plot\"))" },
+        { "type": "wait", "ms": 600 },
+        { "type": "injectFlow", "file": "flows/ema-plot.json" },
+        { "type": "wait", "ms": 250 },
+        { "type": "focus", "selector": ".react-flow__node[data-id=\"4\"]" },
+        { "type": "wait", "ms": 300 },
+        { "type": "focus", "selector": ".react-flow__node[data-id=\"5\"]" },
+        { "type": "wait", "ms": 1100 }
+      ],
+      "holdAfterMs": 1400
+    },
+    {
+      "id": "02-price-chart",
+      "description": "Run the finished strategy, then show the price chart with both EMAs plotted on it.",
+      "setup": [
+        { "type": "click", "selector": "button[title=\"Execute flow\"]" },
+        { "type": "wait", "ms": 6000 },
+        { "type": "press", "key": "Digit1", "shift": true }
+      ],
+      "target": { "selector": "#main-chart", "aspect": "9:16", "anchor": "right" },
+      "waitBeforeMs": 500,
+      "durationMs": 6000
+    }
+  ]
+}

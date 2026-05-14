@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/ --max-time 5)",
+      "Read(//d/Absy/**)",
+      "Bash(npm -v)",
+      "Bash(echo \"npm: $\\(npm -v 2>&1\\)\")",
+      "Bash(ffmpeg -version)",
+      "Bash(echo \"ffmpeg: $\\(ffmpeg -version 2>&1)",
+      "Bash(node src/record.js --headless)",
+      "Bash(node scripts/debug-buildflow.js)",
+      "Bash(cd /d/Absy/web/content-engine/output/algo-trading-reel-01-2026-05-14_18-29-05 && ls -R . | head -40 && echo \"---MANIFEST---\" && cat manifest.json 2>/dev/null | head -80)",
+      "Read(//d/d/Absy/web/content-engine/output/**)",
+      "Bash(ffmpeg -y -loglevel error -ss 16.8 -t 26 -i raw/page@1ded0497830bbf53783b10b68d7336e6.webm -vf 'setpts=PTS-STARTPTS,crop=578:1028:x='\\\\''if\\(lte\\(t,3\\),0,1342\\)'\\\\'':y=48' /tmp/testA.mp4)",
+      "Bash(ffmpeg -y -loglevel error -ss 1 -i /tmp/testA.mp4 -frames:v 1 /tmp/A_t1.png)",
+      "Bash(ffmpeg -y -loglevel error -ss 18 -i /tmp/testA.mp4 -frames:v 1 /tmp/A_t18.png)",
+      "Bash(ffmpeg -y -loglevel error -ss 16.8 -t 26 -i raw/page@1ded0497830bbf53783b10b68d7336e6.webm -vf 'setpts=PTS-STARTPTS,crop=578:1028:x='\\\\''if\\(lte\\(t,3\\),0,1342\\)'\\\\'':y=48' _pantest/testA.mp4)",
+      "Bash(ffmpeg -y -loglevel error -ss 1 -i _pantest/testA.mp4 -frames:v 1 _pantest/A_t1.png)",
+      "Bash(ffmpeg -y -loglevel error -ss 18 -i _pantest/testA.mp4 -frames:v 1 _pantest/A_t18.png)",
+      "Bash(python -c \"import json,sys; m=json.load\\(sys.stdin\\); s=m['scenes'][0]; print\\('startMs',s['startMs']\\); print\\('endMs',s['endMs']\\); print\\('bbox',s['bbox']\\); print\\('fitMode',s['fitMode']\\); print\\('rawDur',m['rawDurationSec']\\); print\\('kfs:'\\); [print\\('  ',k\\) for k in s['focusKeyframes']]\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/ --max-time 4)",
+      "Bash(node src/record.js pipeline.json --headed)"
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "content-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Modular automated short-form trading content engine. Phase 1: pipeline-driven app recorder.",
+  "scripts": {
+    "record": "node src/record.js",
+    "record:headed": "node src/record.js --headed",
+    "record:headless": "node src/record.js --headless"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}

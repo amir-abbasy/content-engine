@@ -1,0 +1,282 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://content-engine/pipeline.schema.json",
+  "title": "Content Engine Automation Pipeline",
+  "description": "Phase 1 schema: drives the Playwright recorder. A pipeline opens the target app once, waits for Pyodide, then walks an ordered list of scenes. Each scene targets its own pane / region and is later cropped to a vertical (mobile) clip.",
+  "type": "object",
+  "required": ["scenes"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "name": {
+      "type": "string",
+      "description": "Pipeline identifier, used in output folder/manifest naming."
+    },
+    "app": {
+      "type": "object",
+      "description": "The app under recording.",
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "default": "http://localhost:3000/",
+          "description": "URL opened once at the start of the run."
+        },
+        "viewport": {
+          "type": "object",
+          "description": "Desktop viewport the app is rendered at. The app is NOT made responsive; scenes crop sub-regions of this canvas.",
+          "additionalProperties": false,
+          "properties": {
+            "width": { "type": "integer", "default": 1920 },
+            "height": { "type": "integer", "default": 1080 }
+          }
+        },
+        "waitForPyodide": {
+          "type": "boolean",
+          "default": true,
+          "description": "Block until the Pyodide startup loader disappears before scene 1."
+        },
+        "pyodideLoaderSelector": {
+          "type": "string",
+          "default": ".app-pyodide-loader",
+          "description": "DOM node present while Pyodide is loading; recorder waits for it to detach."
+        },
+        "readySelector": {
+          "type": "string",
+          "description": "Optional extra selector to wait for (visible) after Pyodide, e.g. '#main-chart'."
+        },
+        "readyTimeoutMs": {
+          "type": "integer",
+          "default": 120000,
+          "description": "Max time to wait for Pyodide / ready selector."
+        }
+      }
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "browser": {
+          "type": "string",
+          "enum": ["chromium", "firefox", "webkit"],
+          "default": "chromium"
+        },
+        "headless": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run without a visible window. CLI --headed / --headless overrides this."
+        },
+        "timelineOffsetMs": {
+          "type": "integer",
+          "default": 0,
+          "description": "Constant offset added to every scene's start/end when slicing the raw video, to compensate for encoder lead-in. Tune if clips look a few frames early/late."
+        },
+        "settleMs": {
+          "type": "integer",
+          "default": 400,
+          "description": "Default pause after a scene's setup actions before its region is measured (lets layout/animations settle)."
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dir": { "type": "string", "default": "output" },
+        "resolution": {
+          "type": "object",
+          "description": "Final clip resolution. Default is a 9:16 vertical frame for Reels / TikTok.",
+          "additionalProperties": false,
+          "properties": {
+            "width": { "type": "integer", "default": 1080 },
+            "height": { "type": "integer", "default": 1920 }
+          }
+        },
+        "fps": { "type": "integer", "default": 30 },
+        "fitMode": {
+          "type": "string",
+          "enum": ["cover", "contain"],
+          "default": "cover",
+          "description": "How a scene's region is mapped to the vertical frame. cover = scale-to-fill + center-crop; contain = scale-to-fit + pad."
+        },
+        "keepRaw": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep the full-session raw video alongside the per-scene clips."
+        }
+      }
+    },
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Ordered scenes. Recorded in one continuous session, then sliced + cropped per scene.",
+      "items": { "$ref": "#/definitions/scene" }
+    }
+  },
+  "definitions": {
+    "scene": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique scene id; becomes the clip filename (output/scenes/<id>.mp4)."
+        },
+        "description": { "type": "string" },
+        "setup": {
+          "type": "array",
+          "description": "Actions run BEFORE the scene's region is measured and timing starts (e.g. open the right pane).",
+          "items": { "$ref": "#/definitions/action" }
+        },
+        "target": {
+          "$ref": "#/definitions/target",
+          "description": "Which part of the desktop canvas this scene captures."
+        },
+        "settleMs": {
+          "type": "integer",
+          "description": "Override record.settleMs for this scene."
+        },
+        "waitBeforeMs": {
+          "type": "integer",
+          "default": 0,
+          "description": "Extra pause after measuring the region, before the scene clock starts."
+        },
+        "durationMs": {
+          "type": "integer",
+          "description": "Minimum scene length, run concurrently with `actions`. The scene lasts max(durationMs, actions time) + holdAfterMs. Optional if the scene has actions, stopWhen, or holdAfterMs."
+        },
+        "holdAfterMs": {
+          "type": "integer",
+          "description": "Static hold AFTER `actions` finish — e.g. let the final state breathe before the next scene."
+        },
+        "stopWhen": {
+          "type": "object",
+          "description": "Alternative to durationMs: end the scene when a selector reaches a state.",
+          "additionalProperties": false,
+          "properties": {
+            "selector": { "type": "string" },
+            "state": {
+              "type": "string",
+              "enum": ["attached", "detached", "visible", "hidden"],
+              "default": "visible"
+            },
+            "timeoutMs": { "type": "integer", "default": 30000 }
+          },
+          "required": ["selector"]
+        },
+        "actions": {
+          "type": "array",
+          "description": "Actions performed DURING the scene (while it is being recorded).",
+          "items": { "$ref": "#/definitions/action" }
+        },
+        "fitMode": {
+          "type": "string",
+          "enum": ["cover", "contain"],
+          "description": "Override output.fitMode for this scene."
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Region of the rendered app to crop for this scene. Provide exactly one of: selector, pane, paneIndex, region, fullViewport.",
+      "properties": {
+        "selector": {
+          "type": "string",
+          "description": "CSS selector; the element's bounding box is captured. e.g. '#main-chart', '.react-flow'."
+        },
+        "pane": {
+          "type": "string",
+          "enum": ["chart", "flow", "result"],
+          "description": "Named pane shortcut; resolves to the pane's full panel box."
+        },
+        "paneIndex": {
+          "type": "integer",
+          "description": "Zero-based index of a [data-panel] element in document order (left-to-right)."
+        },
+        "region": {
+          "type": "object",
+          "description": "Fixed pixel rectangle within the viewport.",
+          "additionalProperties": false,
+          "required": ["x", "y", "width", "height"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "width": { "type": "number" },
+            "height": { "type": "number" }
+          }
+        },
+        "fullViewport": {
+          "type": "boolean",
+          "description": "Capture the entire viewport."
+        },
+        "aspect": {
+          "type": "string",
+          "description": "Optional 'W:H' ratio (e.g. '9:16'). Carves the largest sub-rectangle of that aspect from the resolved box — true vertical framing with no squish."
+        },
+        "anchor": {
+          "type": "string",
+          "enum": ["left", "right", "center", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right"],
+          "default": "center",
+          "description": "Where the `aspect` sub-rectangle sits within the resolved box. 'right' = anchored to the right edge."
+        },
+        "padding": {
+          "description": "Shrink (positive) or expand (negative) the resolved box. Number = all sides, or per-side object.",
+          "oneOf": [
+            { "type": "number" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "top": { "type": "number" },
+                "right": { "type": "number" },
+                "bottom": { "type": "number" },
+                "left": { "type": "number" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": true,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["press", "type", "fill", "click", "rightClick", "dblclick", "hover", "wait", "waitForSelector", "scroll", "mouseMove", "eval"],
+          "description": "press: keyboard combo (key=e.code like 'Digit1', plus shift/ctrl/alt/meta). type: type text into the focused element. fill: focus+clear+set an input by selector. click/rightClick/dblclick/hover: target by selector (optional `position` offset, `nth` for which match). wait: pause ms. waitForSelector: wait for selector state. scroll: wheel by deltaX/deltaY (optionally over selector). mouseMove: move cursor to x,y. eval: run a JS expression string in the page."
+        },
+        "key": { "type": "string" },
+        "shift": { "type": "boolean" },
+        "ctrl": { "type": "boolean" },
+        "alt": { "type": "boolean" },
+        "meta": { "type": "boolean" },
+        "text": { "type": "string" },
+        "delay": { "type": "integer", "description": "Per-keystroke delay for `type` (ms)." },
+        "selector": { "type": "string" },
+        "nth": { "type": "integer", "description": "Pick the Nth match of `selector` (0-based). Defaults to the first match." },
+        "position": {
+          "type": "object",
+          "description": "Click point as an offset inside the target element (e.g. right-clicking empty canvas).",
+          "additionalProperties": false,
+          "required": ["x", "y"],
+          "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+        },
+        "state": { "type": "string", "enum": ["attached", "detached", "visible", "hidden"] },
+        "button": { "type": "string", "enum": ["left", "right", "middle"] },
+        "clickCount": { "type": "integer" },
+        "ms": { "type": "integer" },
+        "deltaX": { "type": "number" },
+        "deltaY": { "type": "number" },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "steps": { "type": "integer", "description": "Intermediate steps for `mouseMove` (smoothness)." },
+        "script": { "type": "string" },
+        "timeoutMs": { "type": "integer" }
+      }
+    }
+  }
+}

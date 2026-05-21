@@ -8,6 +8,8 @@
 
 import playwright from 'playwright';
 import { log } from './log.js';
+import { cursorInitScript } from './cursor.js';
+import { attentionInitScript } from './attention.js';
 
 export async function launchRecorder({ pipeline, rawDir, headless }) {
   const browserType = playwright[pipeline.record.browser] || playwright.chromium;
@@ -21,6 +23,13 @@ export async function launchRecorder({ pipeline, rawDir, headless }) {
     deviceScaleFactor: 1,
     recordVideo: { dir: rawDir, size: viewport },
   });
+
+  // Paint a visible cursor + click ripples into every page Playwright drives
+  // — the recording captures only the page DOM, not the OS pointer, so this
+  // is what makes mouse activity visible in the final clip.
+  await context.addInitScript(cursorInitScript);
+  // Spotlight / pulse / dim overlay helpers used by the `attention` track.
+  await context.addInitScript(attentionInitScript);
 
   const page = await context.newPage();
   // Anchor the scene timeline as close as possible to video t0 (first page).

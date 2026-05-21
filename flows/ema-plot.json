@@ -31,7 +31,7 @@
     },
     {
       "id": "2",
-      "position": { "x": 620, "y": 0 },
+      "position": { "x": 350, "y": 0 },
       "data": {
         "nodeKey": "ta.ema",
         "id": "2",
@@ -42,13 +42,12 @@
           { "name": "close", "type": "array" },
           { "name": "length", "type": "int", "default": 20 }
         ],
-        "Outputs": [{ "name": "EMA", "type": "array", "source": true }],
-        "inputValues": { "1": 20 }
+        "Outputs": [{ "name": "EMA", "type": "array", "source": true }]
       }
     },
     {
       "id": "3",
-      "position": { "x": 620, "y": 340 },
+      "position": { "x": 350, "y": 340 },
       "data": {
         "nodeKey": "ta.ema",
         "id": "3",
@@ -59,13 +58,12 @@
           { "name": "close", "type": "array" },
           { "name": "length", "type": "int", "default": 20 }
         ],
-        "Outputs": [{ "name": "EMA", "type": "array", "source": true }],
-        "inputValues": { "1": 50 }
+        "Outputs": [{ "name": "EMA", "type": "array", "source": true }]
       }
     },
     {
       "id": "4",
-      "position": { "x": 1080, "y": 0 },
+      "position": { "x": 700, "y": 0 },
       "data": {
         "nodeKey": "plot",
         "id": "4",
@@ -81,12 +79,12 @@
         "Outputs": [],
         "isPlotNode": true,
         "plotType": "line",
-        "plotConfig": { "type": "line", "color": "#facc15", "lineWidth": 2, "dash": "solid", "opacity": 1 }
+        "plotConfig": { "type": "line", "lineWidth": 2, "dash": "solid", "opacity": 1 }
       }
     },
     {
       "id": "5",
-      "position": { "x": 1080, "y": 340 },
+      "position": { "x": 700, "y": 340 },
       "data": {
         "nodeKey": "plot",
         "id": "5",
@@ -102,7 +100,7 @@
         "Outputs": [],
         "isPlotNode": true,
         "plotType": "line",
-        "plotConfig": { "type": "line", "color": "#22d3ee", "lineWidth": 2, "dash": "solid", "opacity": 1 }
+        "plotConfig": { "type": "line", "lineWidth": 2, "dash": "solid", "opacity": 1 }
       }
     }
   ],

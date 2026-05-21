@@ -1,22 +1,29 @@
 # Content Engine
 
-Build a modular automated short-form trading content engine focused on Instagram/TikTok reels for algorithmic trading education.
+Build modular short-form trading content — 30-50s vertical (9:16) reels for
+Instagram / TikTok / Shorts — by automating a real web app, recording it, and
+slicing the session into eased, humanized scene clips driven by a single JSON
+timeline.
+
+The whole reel is **data**. Every cursor move, dropdown click, color pick,
+camera pan, spotlight, and click ripple is an event on a typed track in
+`pipeline.json`. Re-running with the same `seed` produces the same performance.
 
 ---
 
 ## Phase 1 — Pipeline-driven app recorder
 
-Phase 1 turns a running web app into raw vertical (9:16) scene clips, fully
-driven by a JSON pipeline. It:
-
 1. Opens the target app (`http://localhost:3000/` by default).
 2. Waits for **Pyodide** to finish loading.
-3. Walks an ordered list of **scenes** in one continuous recording — each scene
-   opens its own pane / region and is held for a set duration.
-4. Slices the raw session video and crops each scene to a vertical clip.
+3. Walks an ordered list of **scenes** in one continuous browser recording.
+4. Inside each scene: a scheduler dispatches events from per-track lists
+   (`input`, `camera`, `reveal`, `attention`) by their absolute `at` time.
+5. Slices the raw `.webm` and crops each scene to a vertical 9:16 clip with an
+   eased camera pan baked into the ffmpeg crop expression.
 
-The app itself is **not** made responsive — each scene crops a sub-region of the
-desktop canvas, so different scenes can use different panes or screen areas.
+The app itself is **not** made responsive — each scene crops a sub-region of
+the desktop canvas, so different scenes can use different panes or screen
+areas.
 
 ### Requirements
 
@@ -49,19 +56,21 @@ CLI flags override the pipeline file: `--headed`, `--headless`, `--out <dir>`,
 Each run writes a timestamped folder under `output/`:
 
 ```
-output/<pipeline-name>-<YYYYMMDD-HHMMSS>/
+output/<pipeline-name>-<YYYY-MM-DD>_<HH-MM-SS>/
   raw/<session>.webm        full desktop recording (kept if output.keepRaw)
   scenes/<scene-id>.mp4     one vertical clip per scene
-  manifest.json             scenes with timings, regions, fit mode, clip paths
+  manifest.json             scenes with timings, regions, camera keyframes
 ```
+
+---
 
 ## The pipeline file
 
-`pipeline.json` is the **full automation pipeline**. `pipeline.schema.json` is
-the authoritative, fully-commented contract — point your editor's JSON schema
-at it for inline docs and validation.
+`pipeline.json` is the timeline. `pipeline.schema.json` is the authoritative
+contract — point your editor's JSON schema at it for inline docs and
+validation.
 
-Shape:
+Top-level shape:
 
 ```jsonc
 {
@@ -70,49 +79,69 @@ Shape:
     "url": "http://localhost:3000/",
     "viewport": { "width": 1920, "height": 1080 },
     "waitForPyodide": true,
-    "pyodideLoaderSelector": ".app-pyodide-loader",  // detaches when ready
-    "readySelector": "#main-chart",                  // optional extra wait
+    "pyodideLoaderSelector": ".app-pyodide-loader",
+    "readySelector": "#main-chart",
     "readyTimeoutMs": 120000
   },
   "record": {
     "browser": "chromium",
     "headless": false,
-    "timelineOffsetMs": 0,   // nudge if clips land a few frames early/late
-    "settleMs": 500          // pause after setup before measuring a region
+    "timelineOffsetMs": 0,
+    "settleMs": 600,
+    "humanize": {
+      "seed": 7,                    // PRNG seed — same seed = same performance
+      "jitter": 0.15,               // ±15% randomness on numeric durations
+      "scale": 1.0,                 // global multiplier
+      "preActionPause": [120, 280]  // ms; tiny hesitation before each click/fill
+    },
+    "cursor": {
+      "movement": "human",           // "human" (bezier) | "linear"
+      "duration":   [380, 720],      // ms travel time per move
+      "overshoot":  0.12,            // fractional overshoot past target
+      "hesitation": [70, 180],       // ms hover before clicking
+      "curvature":  0.4              // bezier control-point bend
+    }
   },
   "output": {
     "dir": "output",
-    "resolution": { "width": 1080, "height": 1920 },  // 9:16
+    "resolution": { "width": 1080, "height": 1920 },
     "fps": 30,
-    "fitMode": "cover",      // cover = scale-fill + center-crop; contain = fit + pad
+    "fitMode": "cover",             // cover = scale-fill + center-crop
     "keepRaw": true
   },
-  "scenes": [ /* ordered scenes — see below */ ]
+  "scenes": [ /* see below */ ]
 }
 ```
 
-### Scenes
+### Scenes as timeline tracks
 
-Each scene captures its own region:
+Each scene is a region of the desktop canvas plus four event tracks dispatched
+on an absolute, scene-relative time axis (seconds):
 
 ```jsonc
 {
-  "id": "01-price-chart",          // becomes scenes/01-price-chart.mp4
-  "description": "Price chart",
-  "setup":  [ /* actions BEFORE timing — e.g. open a pane */ ],
-  "target": { "selector": "#main-chart", "aspect": "9:16", "anchor": "right" },
-  "settleMs": 500,                 // optional per-scene override
-  "waitBeforeMs": 300,             // pause after measuring, before the clock
-  "durationMs": 6000,              // min length, runs concurrently with actions
-  "stopWhen": { "selector": ".done", "state": "visible" },
-  "actions": [ /* actions DURING the take */ ],
-  "holdAfterMs": 2000,             // static hold AFTER actions finish
-  "fitMode": "cover"               // optional per-scene override
+  "id": "01-build-strategy",
+  "description": "Build Candles -> 2 EMAs -> 2 Plots",
+  "target": { "selector": ".react-flow", "aspect": "9:16", "anchor": "center" },
+  "durationSec": 44.5,
+  "holdAfterSec": 1.0,
+  "setup": [
+    { "at": 0.0, "type": "press",      "key": "Digit2", "shift": true },
+    { "at": 0.5, "type": "injectFlow", "file": "flows/ema-plot.json" },
+    { "at": 1.8, "type": "injectFlow", "file": "flows/ema-plot.json", "nodeCount": 0 }
+  ],
+  "tracks": {
+    "input":     [ /* events the user does — clicks, fills, etc */ ],
+    "camera":    [ /* explicit pan keyframes with per-segment ease */ ],
+    "reveal":    [],   // RESERVED: progressive node/port/edge reveals
+    "attention": [ /* spotlight / mark / pulse / dim / release */ ]
+  }
 }
 ```
 
-A scene needs at least one of `durationMs`, `stopWhen`, `holdAfterMs`, or
-`actions`. Total length is `max(durationMs, actions time) + holdAfterMs`.
+`setup` runs before the scene clock starts (its `at` is relative to setup
+start). Once setup finishes and the bbox is measured, the scene clock starts
+and tracks fire by their absolute `at`.
 
 ### Targets — what fills the vertical frame
 
@@ -120,56 +149,163 @@ Provide **exactly one** of:
 
 | Key            | Captures                                                            |
 |----------------|---------------------------------------------------------------------|
-| `selector`     | An element's bounding box, e.g. `#main-chart`, `.react-flow`         |
-| `pane`         | Named pane shortcut: `chart` \| `flow` \| `result` (full panel box)  |
-| `paneIndex`    | The Nth `[data-panel]` element, left-to-right (0-based)              |
-| `region`       | A fixed `{ x, y, width, height }` rectangle                         |
-| `fullViewport` | The whole viewport                                                  |
+| `selector`     | An element's bounding box                                            |
+| `pane`         | Named pane: `chart` \| `flow` \| `result`                            |
+| `paneIndex`    | The Nth `[data-panel]` element                                       |
+| `region`       | A fixed `{ x, y, width, height }` rectangle                          |
+| `fullViewport` | The whole viewport                                                   |
 
 Then optionally refine the resolved box:
 
 - `aspect` + `anchor` — carve the largest `"W:H"` sub-rectangle (e.g. `"9:16"`)
-  and place it (`left` / `right` / `center` / `top` / `bottom` / corners). This
-  is **true vertical framing** — no squish, no black bars.
-- `padding` — number or `{top,right,bottom,left}` to shrink/expand the box.
+  and place it (`left` / `right` / `center` / `top` / `bottom` / corners)
+- `padding` — number or `{top,right,bottom,left}` to shrink / expand
 
-### Actions
+---
 
-Used in `setup` (pre-roll) and `actions` (live). Actions are **selector-based**,
-not coordinate-based — selectors survive layout changes. Types:
+## Tracks
 
-- `press` — keyboard combo: `{ "type": "press", "key": "Digit1", "shift": true }`
-  (the target app keys panes off `event.code`, so `key` is a code token)
-- `type` — type into the focused element: `{ "type": "type", "text": "..." }`
-- `fill` — focus + clear + set an input: `{ "type": "fill", "selector": "input[...]", "text": "..." }`
-- `click` / `rightClick` / `dblclick` / `hover` — by `selector`; optional
-  `position` (offset inside the element, e.g. right-clicking empty canvas) and
-  `nth` (which match). `{ "type": "rightClick", "selector": ".react-flow__pane", "position": { "x": 1500, "y": 430 } }`
-- `wait` — `{ "type": "wait", "ms": 500 }`
-- `waitForSelector` — `{ "type": "waitForSelector", "selector": "...", "state": "visible" }`
-- `scroll` — `{ "type": "scroll", "selector": "...", "deltaY": 300 }`
-- `mouseMove` — `{ "type": "mouseMove", "x": 960, "y": 540 }`
-- `eval` — `{ "type": "eval", "script": "window.scrollTo(0,0)" }`
+### Input track — what the user does
 
-A selector matching multiple elements resolves to the **first** match (override
+Every input event has `at` (seconds, scene-relative) and a `type`. Cursor-
+bearing types (`click`, `rightClick`, `dblclick`, `hover`, `fill`) route
+through the **humanized cursor driver**: bezier travel with overshoot + hover
+hesitation, then click.
+
+| `type`            | Notes                                                                 |
+|-------------------|-----------------------------------------------------------------------|
+| `press`           | Keyboard combo: `{ "key": "Digit1", "shift": true }`                  |
+| `type`            | Types into focused element with per-key jitter                        |
+| `fill`            | Cursor moves to selector → click → clear → types char-by-char         |
+| `click`           | Left click with humanized travel                                      |
+| `rightClick`      | Right click (yellow ripple)                                            |
+| `dblclick`        | Double click                                                          |
+| `hover`           | Cursor travel only, no click                                          |
+| `wait`            | Pause `ms` (rarely needed — use `at` instead)                          |
+| `waitForSelector` | Wait for selector to reach `state`                                    |
+| `scroll`          | Wheel deltas, optionally over selector                                |
+| `drag`            | Press selector → glide to `to` / `toSelector` → release               |
+| `eval`            | Run a JS expression in the page                                       |
+| `injectFlow`      | Build a node graph via `window.__injectFlow` — `file` (+ `nodeCount`) |
+
+Selectors that match multiple elements resolve to the **first** match (override
 with `nth`).
 
-### How timing works
+`cameraFollow: true` on an input event auto-emits a camera keyframe at the
+event's target the moment it fires.
 
-Playwright records video per browser context, so the whole session is one
-`.webm`; scene clips are cut from it by wall-clock timestamps. If clips look a
-few frames early/late, tune `record.timelineOffsetMs`.
+### Camera track — pan keyframes with ease
+
+Each keyframe has `at`, `point: {x, y}` *or* `selector` (+ optional
+`position`), and `ease` (the curve used to arrive at this keyframe from the
+previous one). Eases: `linear`, `quad-in`/`out`/`in-out`, `cubic-in`/`out`/
+`in-out`.
+
+```jsonc
+"camera": [
+  { "at":  0.0, "point": {"x": 503, "y": 290}, "ease": "cubic-out" },
+  { "at":  4.8, "point": {"x": 503, "y": 290}, "ease": "linear" },        // hold
+  { "at":  5.7, "selector": ".react-flow__node[data-id=\"1\"]", "ease": "cubic-in-out" },
+  { "at":  6.4, "selector": ".react-flow__node[data-id=\"1\"]", "ease": "linear" },
+  { "at":  7.3, "point": {"x": 896, "y": 200}, "ease": "cubic-in-out" }   // pull-back
+]
+```
+
+Selector keyframes resolve at firing time (so dynamic positions work). Two
+consecutive keyframes with the same value = hold. The ease is baked into the
+ffmpeg pan expression at crop time, so the camera moves smoothly between
+keyframes in the final clip.
+
+### Attention track — direct the viewer's eye
+
+Four primitives. Implemented as injected CSS + `window.__attention` helpers
+applied via dynamic CSS rules that survive React re-renders (matched by
+`data-id`, not by injected classes).
+
+```jsonc
+"attention": [
+  { "at": 13.0, "type": "mark",      "selector": ".react-flow__node[data-id=\"2\"] input[placeholder=\"int\"]" },
+  { "at": 13.3, "type": "spotlight", "selector": ".react-flow__node[data-id=\"2\"]" },
+  { "at": 15.3, "type": "release" }
+]
+```
+
+| `type`      | Effect                                                                        |
+|-------------|-------------------------------------------------------------------------------|
+| `spotlight` | Target gets a glow halo; all sibling nodes/edges dim. Persists until `release` |
+| `mark`      | Animated yellow rectangle outline blinks around target for ~1.4s (one-shot)    |
+| `pulse`     | Single 620ms yellow glow flash on target (one-shot)                            |
+| `dim`       | Full-viewport semi-opaque overlay; optional `amount: 0..0.85`                  |
+| `release`   | Clears spotlight + dim                                                         |
+
+`spotlight` and `dim` accept an optional `durationSec` for auto-release.
+
+### Reveal track — RESERVED
+
+Track type accepted by the schema. Runtime not yet implemented — events parse
+and warn. Intended for staggered node/port/edge/parameter reveals.
+
+---
+
+## Cinematography model
+
+The "feels human, not scripted" comes from layering:
+
+1. **Humanized timing** (`record.humanize`) — seeded PRNG wraps every `ms`
+   value with `±jitter` and inserts `preActionPause` before cursor events.
+2. **Humanized cursor** (`record.cursor`) — quadratic bezier path with
+   perpendicular bend, eased velocity, slight overshoot + correction at the
+   destination, hover hesitation before the click.
+3. **Eased camera** — per-keyframe `ease` baked into ffmpeg crop expressions
+   so pans accelerate / settle instead of running constant-velocity.
+4. **Visible click effects** — a page-injected cursor image (configurable URL
+   in [src/lib/cursor.js](src/lib/cursor.js)) follows real mouse events;
+   `mousedown` spawns a large concentric-ring ripple (yellow for right-click,
+   white for left).
+5. **Attention choreography** — `mark` primes the viewer's eye 0.5s before an
+   edit; `spotlight` keeps focus on the active node while the rest dims.
+6. **Char-by-char typing** — `fill` clicks the input then types each character
+   with per-key jittered delay instead of Playwright's instant `.fill()`.
+
+Reproducibility: change `record.humanize.seed` to roll a different
+performance; keep it fixed and re-runs are identical.
+
+---
+
+## How timing works
+
+Playwright records video per browser context — the whole session is one
+`.webm`. The scheduler in [src/lib/timeline.js](src/lib/timeline.js) sorts all
+track events by `at` and dispatches in order: it waits until each event's
+scheduled wall-clock, then fires the handler.
+
+Drift handling is **strict** — if a cursor-bearing event takes longer than the
+gap to the next event, the next event fires immediately (no shift). Author
+realistic spacing (~1.0–1.5s between cursor-bearing events; cycles of ~7–9s
+per multi-event sequence).
+
+If clips look a few frames early / late after crop, tune
+`record.timelineOffsetMs`.
+
+---
 
 ## Project layout
 
 ```
-pipeline.json          example pipeline (the automation contract)
-pipeline.schema.json   JSON schema — full field docs + validation
-src/record.js          orchestrator: record session -> slice -> crop
-src/config.js          defaults + CLI parsing
-src/lib/pipeline.js    load + validate pipeline
-src/lib/browser.js     launch context, open app, wait for Pyodide
-src/lib/actions.js     setup / live action runner
-src/lib/target.js      resolve a scene target -> pixel region
-src/lib/crop.js        ffmpeg slice + crop to vertical
+pipeline.json              the timeline (your reel)
+pipeline.schema.json       JSON schema — full field docs + validation
+flows/                     flow JSON fixtures injected by `injectFlow` events
+src/record.js              orchestrator: record session -> slice -> crop
+src/config.js              defaults + CLI parsing
+src/lib/pipeline.js        load + validate the timeline
+src/lib/browser.js         launch context, inject overlays, wait for Pyodide
+src/lib/timeline.js        scheduler: sort by `at` -> dispatch
+src/lib/actions.js         per-event handlers (cursor-driver-aware)
+src/lib/cursor.js          page-injected cursor image + ripple overlay (CSS)
+src/lib/cursor-driver.js   humanized mouse (bezier, overshoot, hesitation)
+src/lib/attention.js       page-injected spotlight / mark / pulse / dim CSS
+src/lib/target.js          resolve a scene target -> pixel region
+src/lib/humanize.js        seeded PRNG, sample(), ease curves, bezier sampler
+src/lib/crop.js            ffmpeg slice + eased pan crop expression
+scripts/                   throwaway debug probes (DOM inspection)
 ```

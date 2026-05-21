@@ -9,6 +9,7 @@
 
 import { spawn } from 'node:child_process';
 import { FFMPEG, FFPROBE } from '../config.js';
+import { easeFFmpeg } from './humanize.js';
 
 function run(bin, args) {
   return new Promise((resolve, reject) => {
@@ -42,9 +43,10 @@ export async function ffprobeDuration(file) {
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-// Piecewise-linear ffmpeg expression over `t` (seconds): holds the first value
-// before the first keyframe, lerps between keyframes, holds the last after.
-// keyframes: [{ t, v }] sorted by t.
+// Piecewise ffmpeg expression over `t` (seconds): holds the first value
+// before the first keyframe, eases between keyframes, holds the last after.
+// keyframes: [{ t, v, ease? }] sorted by t — `ease` is the curve used to
+// arrive AT this keyframe from the previous one (defaults to 'linear').
 function piecewiseExpr(keyframes) {
   if (keyframes.length === 1) return String(Math.round(keyframes[0].v));
   let expr = String(Math.round(keyframes[keyframes.length - 1].v));
@@ -52,7 +54,11 @@ function piecewiseExpr(keyframes) {
     const a = keyframes[i];
     const b = keyframes[i + 1];
     const dt = Math.max(0.001, b.t - a.t);
-    const seg = `(${Math.round(a.v)}+(${Math.round(b.v)}-${Math.round(a.v)})*(t-${a.t.toFixed(3)})/${dt.toFixed(3)})`;
+    const sExpr = `((t-${a.t.toFixed(3)})/${dt.toFixed(3)})`;
+    const eased = (easeFFmpeg[b.ease] || easeFFmpeg.linear)(sExpr);
+    const av = Math.round(a.v);
+    const bv = Math.round(b.v);
+    const seg = `(${av}+(${bv}-${av})*${eased})`;
     expr = `if(lte(t,${b.t.toFixed(3)}),${seg},${expr})`;
   }
   return `if(lte(t,${keyframes[0].t.toFixed(3)}),${Math.round(keyframes[0].v)},${expr})`;
@@ -64,13 +70,22 @@ function staticCrop(bbox) {
 }
 
 // Panning crop: a bbox-sized window whose top-left follows `pan` keyframes.
-// pan: [{ tSec, cx, cy }] — desired window CENTRE at scene-relative time tSec.
+// pan: [{ tSec, cx, cy, ease? }] — desired window CENTRE at scene-relative
+// time tSec, with optional ease curve used to arrive at this keyframe.
 function panCrop(bbox, pan, videoSize) {
   const maxX = Math.max(0, videoSize.width - bbox.width);
   const maxY = Math.max(0, videoSize.height - bbox.height);
   const sorted = [...pan].sort((a, b) => a.tSec - b.tSec);
-  const xKfs = sorted.map((k) => ({ t: Math.max(0, k.tSec), v: clamp(k.cx - bbox.width / 2, 0, maxX) }));
-  const yKfs = sorted.map((k) => ({ t: Math.max(0, k.tSec), v: clamp(k.cy - bbox.height / 2, 0, maxY) }));
+  const xKfs = sorted.map((k) => ({
+    t: Math.max(0, k.tSec),
+    v: clamp(k.cx - bbox.width / 2, 0, maxX),
+    ease: k.ease || 'linear',
+  }));
+  const yKfs = sorted.map((k) => ({
+    t: Math.max(0, k.tSec),
+    v: clamp(k.cy - bbox.height / 2, 0, maxY),
+    ease: k.ease || 'linear',
+  }));
   // Single-quote the expressions so their commas aren't read as filter separators.
   return `crop=${bbox.width}:${bbox.height}:x='${piecewiseExpr(xKfs)}':y='${piecewiseExpr(yKfs)}'`;
 }

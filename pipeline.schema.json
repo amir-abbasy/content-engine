@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://content-engine/pipeline.schema.json",
   "title": "Content Engine Automation Pipeline",
-  "description": "Phase 1 schema: drives the Playwright recorder. A pipeline opens the target app once, waits for Pyodide, then walks an ordered list of scenes. Each scene targets its own pane / region and is later cropped to a vertical (mobile) clip.",
+  "description": "Timeline-first pipeline: a recording is a list of scenes; each scene is a set of typed event tracks (input / camera / reveal / attention) on an absolute time axis. The recorder schedules events by `at` (seconds from scene start), drives the cursor with humanized motion (config: record.cursor), shapes durations with a seeded RNG (config: record.humanize), and pans the crop with per-segment ease (config: each camera keyframe's `ease`).",
   "type": "object",
   "required": ["scenes"],
   "additionalProperties": false,
@@ -17,64 +17,58 @@
       "description": "The app under recording.",
       "additionalProperties": false,
       "properties": {
-        "url": {
-          "type": "string",
-          "default": "http://localhost:3000/",
-          "description": "URL opened once at the start of the run."
-        },
+        "url": { "type": "string", "default": "http://localhost:3000/" },
         "viewport": {
           "type": "object",
           "description": "Desktop viewport the app is rendered at. The app is NOT made responsive; scenes crop sub-regions of this canvas.",
           "additionalProperties": false,
           "properties": {
-            "width": { "type": "integer", "default": 1920 },
+            "width":  { "type": "integer", "default": 1920 },
             "height": { "type": "integer", "default": 1080 }
           }
         },
-        "waitForPyodide": {
-          "type": "boolean",
-          "default": true,
-          "description": "Block until the Pyodide startup loader disappears before scene 1."
-        },
-        "pyodideLoaderSelector": {
-          "type": "string",
-          "default": ".app-pyodide-loader",
-          "description": "DOM node present while Pyodide is loading; recorder waits for it to detach."
-        },
-        "readySelector": {
-          "type": "string",
-          "description": "Optional extra selector to wait for (visible) after Pyodide, e.g. '#main-chart'."
-        },
-        "readyTimeoutMs": {
-          "type": "integer",
-          "default": 120000,
-          "description": "Max time to wait for Pyodide / ready selector."
-        }
+        "waitForPyodide":         { "type": "boolean", "default": true },
+        "pyodideLoaderSelector":  { "type": "string",  "default": ".app-pyodide-loader" },
+        "readySelector":          { "type": "string" },
+        "readyTimeoutMs":         { "type": "integer", "default": 120000 }
       }
     },
     "record": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "browser": {
-          "type": "string",
-          "enum": ["chromium", "firefox", "webkit"],
-          "default": "chromium"
+        "browser":          { "type": "string", "enum": ["chromium", "firefox", "webkit"], "default": "chromium" },
+        "headless":         { "type": "boolean", "default": false },
+        "timelineOffsetMs": { "type": "integer", "default": 0, "description": "Constant offset added when slicing the raw video; compensates encoder lead-in." },
+        "settleMs":         { "type": "integer", "default": 400, "description": "Pause after each scene's setup phase, before its region is measured." },
+        "humanize": {
+          "type": "object",
+          "description": "Organic timing — wraps every `wait`/`ms` value with ±jitter randomness, adds pre-action pauses before cursor-bearing events. Driven by a seeded RNG so runs are reproducible.",
+          "additionalProperties": false,
+          "properties": {
+            "seed":   { "type": "integer", "default": 1, "description": "PRNG seed. Change to roll a different performance." },
+            "jitter": { "type": "number",  "default": 0.15, "description": "Fractional jitter applied to numeric `ms` values, e.g. 0.15 = ±15%." },
+            "scale":  { "type": "number",  "default": 1.0, "description": "Global duration multiplier (1.0 = no change)." },
+            "preActionPause": {
+              "description": "Randomized hesitation before cursor-bearing events (click, rightClick, fill, hover). Range [min, max] ms.",
+              "oneOf": [
+                { "type": "number" },
+                { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 }
+              ]
+            }
+          }
         },
-        "headless": {
-          "type": "boolean",
-          "default": false,
-          "description": "Run without a visible window. CLI --headed / --headless overrides this."
-        },
-        "timelineOffsetMs": {
-          "type": "integer",
-          "default": 0,
-          "description": "Constant offset added to every scene's start/end when slicing the raw video, to compensate for encoder lead-in. Tune if clips look a few frames early/late."
-        },
-        "settleMs": {
-          "type": "integer",
-          "default": 400,
-          "description": "Default pause after a scene's setup actions before its region is measured (lets layout/animations settle)."
+        "cursor": {
+          "type": "object",
+          "description": "Cursor personality — bezier travel with overshoot and hover hesitation, all driven by these parameters.",
+          "additionalProperties": false,
+          "properties": {
+            "movement":   { "type": "string", "enum": ["human", "linear"], "default": "human" },
+            "duration":   { "oneOf": [{ "type": "number" }, { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 }], "description": "Travel duration in ms (number or [min,max] for random sampling)." },
+            "overshoot":  { "type": "number", "description": "Fractional overshoot past the target (0 = none). The cursor aims slightly past, then settles back." },
+            "hesitation": { "oneOf": [{ "type": "number" }, { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 }], "description": "Hover hesitation in ms before the click fires (number or [min,max])." },
+            "curvature":  { "type": "number", "description": "Bezier control-point offset perpendicular to the chord (0 = straight line)." }
+          }
         }
       }
     },
@@ -88,22 +82,13 @@
           "description": "Final clip resolution. Default is a 9:16 vertical frame for Reels / TikTok.",
           "additionalProperties": false,
           "properties": {
-            "width": { "type": "integer", "default": 1080 },
+            "width":  { "type": "integer", "default": 1080 },
             "height": { "type": "integer", "default": 1920 }
           }
         },
-        "fps": { "type": "integer", "default": 30 },
-        "fitMode": {
-          "type": "string",
-          "enum": ["cover", "contain"],
-          "default": "cover",
-          "description": "How a scene's region is mapped to the vertical frame. cover = scale-to-fill + center-crop; contain = scale-to-fit + pad."
-        },
-        "keepRaw": {
-          "type": "boolean",
-          "default": true,
-          "description": "Keep the full-session raw video alongside the per-scene clips."
-        }
+        "fps":     { "type": "integer", "default": 30 },
+        "fitMode": { "type": "string", "enum": ["cover", "contain"], "default": "cover", "description": "cover = scale-to-fill + center-crop; contain = scale-to-fit + pad." },
+        "keepRaw": { "type": "boolean", "default": true }
       }
     },
     "scenes": {
@@ -113,170 +98,166 @@
       "items": { "$ref": "#/definitions/scene" }
     }
   },
+
   "definitions": {
     "scene": {
       "type": "object",
-      "required": ["id"],
+      "required": ["id", "target"],
       "additionalProperties": false,
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique scene id; becomes the clip filename (output/scenes/<id>.mp4)."
-        },
+        "id":          { "type": "string", "description": "Unique scene id; becomes the clip filename (output/scenes/<id>.mp4)." },
         "description": { "type": "string" },
+        "target":      { "$ref": "#/definitions/target", "description": "Which part of the desktop canvas this scene captures." },
+        "settleMs":    { "type": "integer", "description": "Override record.settleMs for this scene." },
+        "fitMode":     { "type": "string", "enum": ["cover", "contain"], "description": "Override output.fitMode for this scene." },
+        "durationSec":   { "type": "number", "description": "Scene clip length in seconds. The scheduler holds the recording until this elapses, even if all events finished sooner." },
+        "holdAfterSec":  { "type": "number", "description": "Optional static hold AFTER `durationSec`, letting the final state breathe before the next scene." },
         "setup": {
           "type": "array",
-          "description": "Actions run BEFORE the scene's region is measured and timing starts (e.g. open the right pane).",
-          "items": { "$ref": "#/definitions/action" }
+          "description": "Timeline of events run BEFORE the scene clock starts (e.g. open a pane, pre-inject state). Same event shape as tracks.input; `at` is relative to setup start.",
+          "items": { "$ref": "#/definitions/inputEvent" }
         },
-        "target": {
-          "$ref": "#/definitions/target",
-          "description": "Which part of the desktop canvas this scene captures."
-        },
-        "settleMs": {
-          "type": "integer",
-          "description": "Override record.settleMs for this scene."
-        },
-        "waitBeforeMs": {
-          "type": "integer",
-          "default": 0,
-          "description": "Extra pause after measuring the region, before the scene clock starts."
-        },
-        "durationMs": {
-          "type": "integer",
-          "description": "Minimum scene length, run concurrently with `actions`. The scene lasts max(durationMs, actions time) + holdAfterMs. Optional if the scene has actions, stopWhen, or holdAfterMs."
-        },
-        "holdAfterMs": {
-          "type": "integer",
-          "description": "Static hold AFTER `actions` finish — e.g. let the final state breathe before the next scene."
-        },
-        "stopWhen": {
+        "tracks": {
           "type": "object",
-          "description": "Alternative to durationMs: end the scene when a selector reaches a state.",
+          "description": "Per-scene event tracks. Times (`at`) are absolute scene-relative seconds. All tracks are flattened, sorted by `at`, and dispatched by a single scheduler.",
           "additionalProperties": false,
           "properties": {
-            "selector": { "type": "string" },
-            "state": {
-              "type": "string",
-              "enum": ["attached", "detached", "visible", "hidden"],
-              "default": "visible"
-            },
-            "timeoutMs": { "type": "integer", "default": 30000 }
-          },
-          "required": ["selector"]
-        },
-        "actions": {
-          "type": "array",
-          "description": "Actions performed DURING the scene (while it is being recorded).",
-          "items": { "$ref": "#/definitions/action" }
-        },
-        "fitMode": {
-          "type": "string",
-          "enum": ["cover", "contain"],
-          "description": "Override output.fitMode for this scene."
+            "input":     { "type": "array", "items": { "$ref": "#/definitions/inputEvent" },     "description": "User-driven events: clicks, fills, key presses, scroll, drag, eval, injectFlow. Cursor-bearing types route through the humanized mouse driver." },
+            "camera":    { "type": "array", "items": { "$ref": "#/definitions/cameraEvent" },    "description": "Camera keyframes — the crop window's centre at time `at`. Camera lerps between successive keyframes with per-keyframe `ease`." },
+            "reveal":    { "type": "array", "items": { "$ref": "#/definitions/revealEvent" },    "description": "Staggered reveal effects (node appear / port glow / edge animate / param highlight). Track is reserved — runtime not yet implemented." },
+            "attention": { "type": "array", "items": { "$ref": "#/definitions/attentionEvent" }, "description": "Attention choreography (linger, pulse, inspect). Track is reserved — runtime not yet implemented." }
+          }
         }
       }
     },
+
     "target": {
       "type": "object",
       "additionalProperties": false,
       "description": "Region of the rendered app to crop for this scene. Provide exactly one of: selector, pane, paneIndex, region, fullViewport.",
       "properties": {
-        "selector": {
-          "type": "string",
-          "description": "CSS selector; the element's bounding box is captured. e.g. '#main-chart', '.react-flow'."
-        },
-        "pane": {
-          "type": "string",
-          "enum": ["chart", "flow", "result"],
-          "description": "Named pane shortcut; resolves to the pane's full panel box."
-        },
-        "paneIndex": {
-          "type": "integer",
-          "description": "Zero-based index of a [data-panel] element in document order (left-to-right)."
-        },
+        "selector":     { "type": "string",  "description": "CSS selector; the element's bounding box is captured." },
+        "pane":         { "type": "string",  "enum": ["chart", "flow", "result"], "description": "Named pane shortcut." },
+        "paneIndex":    { "type": "integer", "description": "Zero-based index of a [data-panel] element in document order." },
         "region": {
           "type": "object",
           "description": "Fixed pixel rectangle within the viewport.",
           "additionalProperties": false,
           "required": ["x", "y", "width", "height"],
           "properties": {
-            "x": { "type": "number" },
-            "y": { "type": "number" },
-            "width": { "type": "number" },
-            "height": { "type": "number" }
+            "x":      { "type": "number" }, "y":      { "type": "number" },
+            "width":  { "type": "number" }, "height": { "type": "number" }
           }
         },
-        "fullViewport": {
-          "type": "boolean",
-          "description": "Capture the entire viewport."
-        },
-        "aspect": {
-          "type": "string",
-          "description": "Optional 'W:H' ratio (e.g. '9:16'). Carves the largest sub-rectangle of that aspect from the resolved box — true vertical framing with no squish."
-        },
-        "anchor": {
-          "type": "string",
-          "enum": ["left", "right", "center", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right"],
-          "default": "center",
-          "description": "Where the `aspect` sub-rectangle sits within the resolved box. 'right' = anchored to the right edge."
-        },
+        "fullViewport": { "type": "boolean", "description": "Capture the entire viewport." },
+        "aspect":       { "type": "string", "description": "Optional 'W:H' ratio (e.g. '9:16'). Carves the largest sub-rectangle of that aspect from the resolved box." },
+        "anchor":       { "type": "string", "enum": ["left", "right", "center", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right"], "default": "center" },
         "padding": {
           "description": "Shrink (positive) or expand (negative) the resolved box. Number = all sides, or per-side object.",
           "oneOf": [
             { "type": "number" },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "top": { "type": "number" },
-                "right": { "type": "number" },
-                "bottom": { "type": "number" },
-                "left": { "type": "number" }
-              }
-            }
+            { "type": "object", "additionalProperties": false, "properties": { "top": { "type": "number" }, "right": { "type": "number" }, "bottom": { "type": "number" }, "left": { "type": "number" } } }
           ]
         }
       }
     },
-    "action": {
+
+    "inputEvent": {
       "type": "object",
-      "required": ["type"],
+      "required": ["at", "type"],
       "additionalProperties": true,
+      "description": "User-driven event on the input track. Cursor-bearing types (click, rightClick, dblclick, hover, fill) route through the humanized mouse driver — `at` is when the gesture STARTS (cursor travel + hesitation + click run forward from there).",
       "properties": {
+        "at":   { "type": "number", "description": "Scene-relative time in seconds." },
         "type": {
           "type": "string",
-          "enum": ["press", "type", "fill", "click", "rightClick", "dblclick", "hover", "wait", "waitForSelector", "scroll", "mouseMove", "eval"],
-          "description": "press: keyboard combo (key=e.code like 'Digit1', plus shift/ctrl/alt/meta). type: type text into the focused element. fill: focus+clear+set an input by selector. click/rightClick/dblclick/hover: target by selector (optional `position` offset, `nth` for which match). wait: pause ms. waitForSelector: wait for selector state. scroll: wheel by deltaX/deltaY (optionally over selector). mouseMove: move cursor to x,y. eval: run a JS expression string in the page."
+          "enum": ["press", "type", "fill", "click", "rightClick", "dblclick", "hover", "wait", "waitForSelector", "scroll", "drag", "eval", "injectFlow"],
+          "description": "press: keyboard combo (key=e.code, plus shift/ctrl/alt/meta). type: type into the focused element. fill: focus+clear+set an input by selector. click/rightClick/dblclick/hover: target by selector (optional `position` offset, `nth` for which match). wait: pause `ms` ms (rarely needed on a timeline — use `at` instead). waitForSelector: wait for selector state. scroll: wheel by deltaX/deltaY (optionally over selector). drag: press on selector, glide to `to` or `toSelector`, release. eval: run a JS expression. injectFlow: build a node graph via window.__injectFlow from `file` (optionally only the first `nodeCount` nodes)."
         },
-        "key": { "type": "string" },
-        "shift": { "type": "boolean" },
-        "ctrl": { "type": "boolean" },
-        "alt": { "type": "boolean" },
-        "meta": { "type": "boolean" },
-        "text": { "type": "string" },
-        "delay": { "type": "integer", "description": "Per-keystroke delay for `type` (ms)." },
+        "key":   { "type": "string" },
+        "shift": { "type": "boolean" }, "ctrl": { "type": "boolean" }, "alt": { "type": "boolean" }, "meta": { "type": "boolean" },
+        "text":  { "type": "string" },
+        "delay": { "description": "Per-keystroke delay for `type`. Number or [min,max] for random sampling.", "oneOf": [ { "type": "integer" }, { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 } ] },
         "selector": { "type": "string" },
-        "nth": { "type": "integer", "description": "Pick the Nth match of `selector` (0-based). Defaults to the first match." },
+        "nth":      { "type": "integer", "description": "Pick the Nth match of `selector` (0-based)." },
         "position": {
-          "type": "object",
-          "description": "Click point as an offset inside the target element (e.g. right-clicking empty canvas).",
-          "additionalProperties": false,
-          "required": ["x", "y"],
+          "type": "object", "additionalProperties": false, "required": ["x", "y"],
+          "description": "Click point as an offset inside the target element.",
           "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
         },
-        "state": { "type": "string", "enum": ["attached", "detached", "visible", "hidden"] },
-        "button": { "type": "string", "enum": ["left", "right", "middle"] },
-        "clickCount": { "type": "integer" },
-        "ms": { "type": "integer" },
-        "deltaX": { "type": "number" },
-        "deltaY": { "type": "number" },
-        "x": { "type": "number" },
-        "y": { "type": "number" },
-        "steps": { "type": "integer", "description": "Intermediate steps for `mouseMove` (smoothness)." },
-        "script": { "type": "string" },
-        "timeoutMs": { "type": "integer" }
+        "to": {
+          "type": "object", "additionalProperties": false, "required": ["x", "y"],
+          "description": "`drag` destination as absolute viewport coords.",
+          "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+        },
+        "toSelector": { "type": "string" },
+        "toPosition": {
+          "type": "object", "additionalProperties": false, "required": ["x", "y"],
+          "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+        },
+        "file":          { "type": "string",  "description": "`injectFlow`: path to a flow JSON." },
+        "nodeCount":     { "type": "integer", "description": "`injectFlow`: inject only the first N nodes (+ edges among them)." },
+        "state":         { "type": "string",  "enum": ["attached", "detached", "visible", "hidden"] },
+        "button":        { "type": "string",  "enum": ["left", "right", "middle"] },
+        "clickCount":    { "type": "integer" },
+        "ms": {
+          "description": "For `wait`: pause duration. Number or [min,max] for random sampling.",
+          "oneOf": [ { "type": "integer" }, { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 } ]
+        },
+        "deltaX": { "type": "number" }, "deltaY": { "type": "number" },
+        "steps":   { "type": "integer" },
+        "script":  { "type": "string" },
+        "timeoutMs": { "type": "integer" },
+        "cameraFollow":     { "type": "boolean", "description": "If true, drop a camera keyframe at this event's target the moment it fires — convenience for 'camera follows the cursor'." },
+        "cameraFollowEase": { "$ref": "#/definitions/ease" }
       }
+    },
+
+    "cameraEvent": {
+      "type": "object",
+      "required": ["at"],
+      "additionalProperties": false,
+      "description": "Camera keyframe at `at`. Use `point` for an absolute viewport coord OR `selector` (+ optional `position`) for a DOM-anchored target whose position is resolved at firing time. The crop window's centre passes through these keyframes in order, eased per-segment.",
+      "properties": {
+        "at":       { "type": "number" },
+        "point":    { "type": "object", "additionalProperties": false, "required": ["x", "y"], "properties": { "x": { "type": "number" }, "y": { "type": "number" } } },
+        "selector": { "type": "string" },
+        "position": { "type": "object", "additionalProperties": false, "required": ["x", "y"], "properties": { "x": { "type": "number" }, "y": { "type": "number" } } },
+        "ease":     { "$ref": "#/definitions/ease" }
+      }
+    },
+
+    "revealEvent": {
+      "type": "object",
+      "required": ["at"],
+      "additionalProperties": true,
+      "description": "(Reserved.) Progressive reveal — stage opacity/scale/glow on a target. Runtime not yet implemented; events parse but are no-ops with a warning.",
+      "properties": {
+        "at":         { "type": "number" },
+        "type":       { "type": "string", "description": "e.g. 'nodeStagger', 'edgeDraw', 'paramHighlight'." },
+        "selector":   { "type": "string" },
+        "durationSec":{ "type": "number" }
+      }
+    },
+
+    "attentionEvent": {
+      "type": "object",
+      "required": ["at"],
+      "additionalProperties": true,
+      "description": "(Reserved.) Attention choreography — linger / pulse / inspect on a target. Runtime not yet implemented.",
+      "properties": {
+        "at":         { "type": "number" },
+        "type":       { "type": "string", "description": "e.g. 'linger', 'pulse', 'inspect'." },
+        "selector":   { "type": "string" },
+        "durationSec":{ "type": "number" }
+      }
+    },
+
+    "ease": {
+      "type": "string",
+      "enum": ["linear", "quad-in", "quad-out", "quad-in-out", "cubic-in", "cubic-out", "cubic-in-out"],
+      "default": "linear",
+      "description": "Easing curve used to arrive AT this keyframe from the previous one."
     }
   }
 }

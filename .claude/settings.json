@@ -19,7 +19,21 @@
       "Bash(ffmpeg -y -loglevel error -ss 18 -i _pantest/testA.mp4 -frames:v 1 _pantest/A_t18.png)",
       "Bash(python -c \"import json,sys; m=json.load\\(sys.stdin\\); s=m['scenes'][0]; print\\('startMs',s['startMs']\\); print\\('endMs',s['endMs']\\); print\\('bbox',s['bbox']\\); print\\('fitMode',s['fitMode']\\); print\\('rawDur',m['rawDurationSec']\\); print\\('kfs:'\\); [print\\('  ',k\\) for k in s['focusKeyframes']]\")",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/ --max-time 4)",
-      "Bash(node src/record.js pipeline.json --headed)"
+      "Bash(node src/record.js pipeline.json --headed)",
+      "Bash(node scripts/debug-chart.js)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/ --max-time 4)",
+      "Bash(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 scenes/01-build-strategy.mp4)",
+      "Bash(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 scenes/02-price-chart.mp4)",
+      "Bash(node scripts/debug-viewport.js)",
+      "Bash(python -c \"import json,sys; m=json.load\\(sys.stdin\\); s=m['scenes'][0]; print\\(f'startMs={s[\\\\\"startMs\\\\\"]:.0f} endMs={s[\\\\\"endMs\\\\\"]:.0f} dur={s[\\\\\"endMs\\\\\"]-s[\\\\\"startMs\\\\\"]:.0f}ms'\\); print\\(f'rawDur={m[\\\\\"rawDurationSec\\\\\"]:.2f}s'\\)\")",
+      "Bash(python -c \"import json,sys; m=json.load\\(sys.stdin\\); s=m['scenes'][0]; print\\(f'scaled startMs={s[\\\\\"startMs\\\\\"]:.0f} endMs={s[\\\\\"endMs\\\\\"]:.0f}'\\); print\\(f'rawDur={m[\\\\\"rawDurationSec\\\\\"]:.2f}s'\\)\")",
+      "Bash(python -c \"import json,sys; m=json.load\\(sys.stdin\\); print\\(f'startMs={m[\\\\\"scenes\\\\\"][0][\\\\\"startMs\\\\\"]:.0f}'\\); [print\\(f'  tMs={k[\\\\\"tMs\\\\\"]:6d}  cx={k[\\\\\"cx\\\\\"]:7.1f}  cy={k[\\\\\"cy\\\\\"]:6.1f}'\\) for k in m['scenes'][0]['focusKeyframes']]\")",
+      "Bash(node scripts/debug-node-input.js)",
+      "Bash(node scripts/debug-plot-color.js)",
+      "Bash(node scripts/debug-plot-color2.js)",
+      "Bash(python -c \"import json,sys; m=json.load\\(sys.stdin\\); s=m['scenes'][0]; print\\(f'startMs={s[\\\\\"startMs\\\\\"]:.0f}  endMs={s[\\\\\"endMs\\\\\"]:.0f}  dur={\\(s[\\\\\"endMs\\\\\"]-s[\\\\\"startMs\\\\\"]\\)/1000:.1f}s'\\); print\\('keyframes:'\\); [print\\(f'  tMs={k[\\\\\"tMs\\\\\"]:6d}  cx={k[\\\\\"cx\\\\\"]:7.1f}  cy={k[\\\\\"cy\\\\\"]:6.1f}  ease={k[\\\\\"ease\\\\\"]}'\\) for k in s['focusKeyframes']]\")",
+      "Bash(python -c \"import json,sys; m=json.load\\(sys.stdin\\); s=m['scenes'][0]; print\\(f'startMs={s[\\\\\"startMs\\\\\"]:.0f}'\\); print\\('keyframes:'\\); [print\\(f'  scene_t={\\(k[\\\\\"tMs\\\\\"]-s[\\\\\"startMs\\\\\"]\\)/1000:5.2f}  cx={k[\\\\\"cx\\\\\"]:7.1f}  cy={k[\\\\\"cy\\\\\"]:6.1f}'\\) for k in s['focusKeyframes']]\")",
+      "Bash(dir \"output\\\\algo-trading-reel-01-2026-05-18_19-36-13\\\\\" 2>&1)"
     ]
   }
 }

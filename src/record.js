@@ -1,8 +1,13 @@
-// Content Engine — Phase 1 recorder.
+// Content Engine — recorder.
 //
 // Opens the target app once, waits for Pyodide, then walks the pipeline's
-// scenes in a single continuous recording. Afterwards the raw session video is
-// sliced + cropped per scene into vertical (mobile-ratio) clips.
+// scenes in a single continuous recording. Each scene is a TIMELINE of
+// typed events on absolute scene-relative time axes — the scheduler in
+// timeline.js dispatches them in order, the cursor driver in
+// cursor-driver.js animates pointer motion organically, the humanizer in
+// humanize.js shapes durations with a seeded RNG. Afterwards the raw
+// session video is sliced + cropped per scene into vertical clips, with
+// per-keyframe ease on the pan.
 //
 //   node src/record.js [pipeline.json] [--headed|--headless] [--out dir] [--url u]
 
@@ -11,7 +16,10 @@ import path from 'node:path';
 import { parseCli } from './config.js';
 import { loadPipeline } from './lib/pipeline.js';
 import { launchRecorder, waitForPyodide } from './lib/browser.js';
-import { runActions } from './lib/actions.js';
+import { runEvent } from './lib/actions.js';
+import { runEvents } from './lib/timeline.js';
+import { createRng } from './lib/humanize.js';
+import { createCursorDriver } from './lib/cursor-driver.js';
 import { resolveTarget } from './lib/target.js';
 import { cropScene, ffprobeDuration } from './lib/crop.js';
 import { log } from './lib/log.js';
@@ -19,14 +27,43 @@ import { log } from './lib/log.js';
 function timestamp() {
   const d = new Date();
   const p = (n) => String(n).padStart(2, '0');
-  // Readable: 2026-05-14_13-16-34  ->  output/algo-trading-reel-01-2026-05-14_13-16-34
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
 }
 
-// Drives the browser through every scene and returns timing + region metadata
-// plus the path to the finalized raw session video.
+// Resolve a camera event's keyframe coords (point or selector + optional position).
+async function resolveCameraPoint(page, ev, viewport) {
+  if (ev.point) return { cx: ev.point.x, cy: ev.point.y };
+  if (!ev.selector) return null;
+  const loc = page.locator(ev.selector).first();
+  const box = await loc.boundingBox().catch(() => null);
+  if (!box) {
+    // Fallback to target.js's smarter resolver (handles pane keys etc.)
+    const fb = await resolveTarget(page, { selector: ev.selector }, viewport).catch(() => null);
+    if (!fb) return null;
+    return { cx: fb.x + fb.width / 2, cy: fb.y + fb.height / 2 };
+  }
+  const pos = ev.position || { x: box.width / 2, y: box.height / 2 };
+  return { cx: box.x + pos.x, cy: box.y + pos.y };
+}
+
+// Resolve the absolute coords for an input event's target — used by
+// `cameraFollow` to drop a camera keyframe at the same spot the cursor is
+// about to click.
+async function resolveInputPoint(page, ev) {
+  if (!ev.selector) return null;
+  const loc = page.locator(ev.selector).first();
+  const box = await loc.boundingBox().catch(() => null);
+  if (!box) return null;
+  const pos = ev.position || { x: box.width / 2, y: box.height / 2 };
+  return { cx: box.x + pos.x, cy: box.y + pos.y };
+}
+
 async function recordSession(pipeline, { headless, rawDir }) {
   const { browser, context, page, recordingStartedAt } = await launchRecorder({ pipeline, rawDir, headless });
+  const rng = createRng(pipeline.record.humanize?.seed ?? 1);
+  const cursor = createCursorDriver(page, rng, pipeline.record.cursor || {});
+  const ctx = { page, rng, cursor, humanize: pipeline.record.humanize };
+
   const scenesMeta = [];
   let rawVideoPath = null;
   let wallSpanMs = 0;
@@ -37,55 +74,95 @@ async function recordSession(pipeline, { headless, rawDir }) {
     for (const scene of pipeline.scenes) {
       log.step(`Scene "${scene.id}"${scene.description ? ` — ${scene.description}` : ''}`);
 
-      // setup runs BEFORE the scene clock — e.g. open the target pane.
-      await runActions(page, scene.setup, 'setup');
+      // ── Setup phase — pre-clock. Same timeline shape (events with `at` in
+      // seconds from setup start), so authors can stagger setup steps too.
+      if (Array.isArray(scene.setup) && scene.setup.length > 0) {
+        await runEvents(scene.setup, page, (ev) => runEvent(ev, ctx), { label: '  setup' });
+      }
 
       const settleMs = scene.settleMs ?? pipeline.record.settleMs;
       if (settleMs) await page.waitForTimeout(settleMs);
 
-      // Measure the capture region once the layout has settled.
+      // Measure the capture region once layout has settled.
       const bbox = await resolveTarget(page, scene.target, pipeline.app.viewport);
       log.info(`  region ${bbox.width}x${bbox.height} @ (${bbox.x},${bbox.y})`);
 
-      if (scene.waitBeforeMs) await page.waitForTimeout(scene.waitBeforeMs);
-
-      // Scene clock starts here. `actions` run live, concurrently with the hold.
-      const startMs = Date.now() - recordingStartedAt;
-      // `focus` actions drop camera keyframes — the crop window pans between
-      // them so it follows the action (e.g. each node as the flow is built).
+      // ── Scene clock starts here. Flatten all tracks; sort by `at`; dispatch.
       const focusKeyframes = [];
-      const onFocus = async (action) => {
-        try {
-          const fb = await resolveTarget(page, { selector: action.selector }, pipeline.app.viewport);
+      const tracks = scene.tracks || {};
+      const events = [];
+      for (const name of ['input', 'camera', 'reveal', 'attention']) {
+        for (const ev of (tracks[name] || [])) events.push({ ...ev, _track: name });
+      }
+
+      const startMs = Date.now() - recordingStartedAt;
+
+      // Custom dispatcher: camera events emit pan keyframes; reveal/attention
+      // are reserved track types (forward-compatible, runtime not yet built).
+      const dispatch = async (ev) => {
+        if (ev._track === 'camera') {
+          const pt = await resolveCameraPoint(page, ev, pipeline.app.viewport);
+          if (!pt) {
+            log.warn(`  camera kf @${(ev.at || 0).toFixed(2)}s skipped: no target`);
+            return;
+          }
           focusKeyframes.push({
             tMs: Date.now() - recordingStartedAt,
-            cx: fb.x + fb.width / 2,
-            cy: fb.y + fb.height / 2,
+            cx: pt.cx,
+            cy: pt.cy,
+            ease: ev.ease || 'cubic-in-out',
           });
-        } catch (e) {
-          log.warn(`  focus "${action.selector}" skipped: ${e.message}`);
+          return;
         }
+        if (ev._track === 'attention') {
+          const ok = await page.evaluate(({ kind, sel, amount, padding, durationMs }) => {
+            const a = window.__attention;
+            if (!a) return false;
+            if (kind === 'spotlight') return a.spotlight(sel);
+            if (kind === 'pulse')     return a.pulse(sel);
+            if (kind === 'mark')      return a.mark(sel, { padding, durationMs });
+            if (kind === 'dim')       { a.dim(amount); return true; }
+            if (kind === 'release')   { a.release(); return true; }
+            return false;
+          }, { kind: ev.type, sel: ev.selector, amount: ev.amount, padding: ev.padding, durationMs: ev.durationMs });
+          if (!ok) log.warn(`  attention @${(ev.at || 0).toFixed(2)}s ${ev.type} skipped`);
+          // Auto-release after `durationSec` if specified on a spotlight/dim.
+          if (ev.durationSec && (ev.type === 'spotlight' || ev.type === 'dim')) {
+            setTimeout(() => {
+              page.evaluate(() => window.__attention && window.__attention.release()).catch(() => {});
+            }, ev.durationSec * 1000);
+          }
+          return;
+        }
+        if (ev._track === 'reveal') {
+          log.warn(`  reveal track not yet implemented (event: ${ev.type || 'untyped'})`);
+          return;
+        }
+        // input track — also handle cameraFollow side-effect.
+        if (ev.cameraFollow) {
+          const pt = await resolveInputPoint(page, ev);
+          if (pt) {
+            focusKeyframes.push({
+              tMs: Date.now() - recordingStartedAt,
+              cx: pt.cx,
+              cy: pt.cy,
+              ease: ev.cameraFollowEase || 'cubic-in-out',
+            });
+          }
+        }
+        await runEvent(ev, ctx);
       };
-      const actionsPromise = runActions(page, scene.actions, 'live', { onFocus }).catch((e) => {
-        log.warn(`  live actions failed: ${e.message}`);
-      });
 
-      if (scene.durationMs !== undefined) {
-        await page.waitForTimeout(scene.durationMs);
-      } else if (scene.stopWhen) {
-        try {
-          await page.waitForSelector(scene.stopWhen.selector, {
-            state: scene.stopWhen.state || 'visible',
-            timeout: scene.stopWhen.timeoutMs ?? 30000,
-          });
-        } catch (e) {
-          log.warn(`  stopWhen never met: ${e.message}`);
-        }
-      }
-      await actionsPromise;
+      const sceneStartWall = Date.now();
+      await runEvents(events, page, dispatch, { label: '  live' });
 
-      // Optional static hold AFTER the live actions finish.
-      if (scene.holdAfterMs) await page.waitForTimeout(scene.holdAfterMs);
+      // Hold until durationSec fully elapses (events may have finished earlier).
+      const durationMs = (scene.durationSec || 0) * 1000;
+      const elapsed = Date.now() - sceneStartWall;
+      if (durationMs > elapsed) await page.waitForTimeout(durationMs - elapsed);
+
+      // Optional extra hold AFTER the scene clock.
+      if (scene.holdAfterSec) await page.waitForTimeout(scene.holdAfterSec * 1000);
 
       const endMs = Date.now() - recordingStartedAt;
       log.ok(`  held ${endMs - startMs}ms`);
@@ -101,12 +178,11 @@ async function recordSession(pipeline, { headless, rawDir }) {
       });
     }
   } finally {
-    // Closing the context flushes + finalizes the .webm so its path resolves.
     const video = page.video();
     wallSpanMs = Date.now() - recordingStartedAt;
     await context.close();
     if (video) {
-      try { rawVideoPath = await video.path(); } catch { /* recording may not exist on early failure */ }
+      try { rawVideoPath = await video.path(); } catch { /* may be missing on early failure */ }
     }
     await browser.close();
   }
@@ -118,7 +194,6 @@ async function main() {
   const cli = parseCli();
   const pipeline = loadPipeline(cli.pipelinePath);
 
-  // CLI overrides win over the pipeline file.
   if (cli.headless !== undefined) pipeline.record.headless = cli.headless;
   if (cli.outDir) pipeline.output.dir = cli.outDir;
   if (cli.url) pipeline.app.url = cli.url;
@@ -139,27 +214,26 @@ async function main() {
   });
 
   if (!rawVideoPath) throw new Error('Playwright produced no raw video (recording failed before any scene)');
-  log.ok(`Raw session video ready`);
+  log.ok('Raw session video ready');
 
   const rawDuration = await ffprobeDuration(rawVideoPath);
   log.info(`Raw duration ${rawDuration.toFixed(2)}s — slicing ${scenesMeta.length} scene(s)`);
 
-  // Scene timestamps are wall-clock; the encoded video can run slightly
-  // shorter/longer. Linearly map wall-clock -> video time so slices stay aligned.
   const rawDurationMs = rawDuration * 1000;
   const scale = wallSpanMs > 0 ? rawDurationMs / wallSpanMs : 1;
   const offset = pipeline.record.timelineOffsetMs || 0;
   const results = [];
+
   for (const meta of scenesMeta) {
     const startMs = Math.max(0, meta.startMs * scale + offset);
     const endMs = Math.min(rawDurationMs, meta.endMs * scale + offset);
     const clip = path.join(scenesDir, `${meta.id}.mp4`);
-    // Camera-follow: map focus keyframes onto the clip's local (post-seek) timeline.
     const pan = meta.focusKeyframes && meta.focusKeyframes.length
       ? meta.focusKeyframes.map((kf) => ({
           tSec: Math.max(0, ((kf.tMs - meta.startMs) * scale) / 1000),
           cx: kf.cx,
           cy: kf.cy,
+          ease: kf.ease || 'linear',
         }))
       : undefined;
     log.step(`Cropping "${meta.id}" → scenes/${meta.id}.mp4${pan ? ` (pan: ${pan.length} keyframes)` : ''}`);

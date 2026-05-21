@@ -1,162 +1,160 @@
-// Executes pipeline "actions" against a Playwright page. Used both for a
-// scene's `setup` (before timing starts) and its `actions` (during the take).
+// Per-event handlers for the timeline scheduler. Each handler runs ONE typed
+// event and may take real time (cursor travel, keystrokes, etc.); the
+// scheduler in timeline.js decides WHEN each is dispatched.
 //
-// Design choices:
-// - Selector-based, not coordinate-based — selectors survive layout changes.
-//   For clicks that genuinely need a spot inside an element (e.g. right-
-//   clicking empty canvas) use `position`, an offset relative to the element.
-// - A selector that matches several elements resolves to `.first()` unless an
-//   explicit `nth` is given — predictable for content automation.
+// Cursor-bearing events (`click`, `rightClick`, `dblclick`, `hover`, `fill`)
+// route through the humanized cursor driver before the underlying action
+// fires — that's what produces curved travel, overshoot, and hover hesitation
+// instead of Playwright's teleport-and-click. The driver also tracks the
+// cursor's "current" position so successive moves chain from where it is.
 //
-// Keyboard note: the target app keys panes off `event.code` (Digit1..Digit6),
-// so `key` here is a Playwright key/code token ("Digit1", "Enter", "KeyA", ...)
-// and modifiers are explicit booleans.
+// Pre-action pauses (config: `record.humanize.preActionPause`) are inserted
+// before cursor-bearing events: a tiny randomized beat before the gesture
+// starts, the way a human's hand briefly stalls before reaching for a target.
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { log } from './log.js';
+import { sample } from './humanize.js';
 
 const MODIFIER_ORDER = [
   ['ctrl', 'Control'],
-  ['alt', 'Alt'],
+  ['alt',  'Alt'],
   ['shift', 'Shift'],
   ['meta', 'Meta'],
 ];
 
-function keyCombo(action) {
-  const mods = MODIFIER_ORDER.filter(([flag]) => action[flag]).map(([, name]) => name);
-  return [...mods, action.key].join('+');
+function keyCombo(ev) {
+  const mods = MODIFIER_ORDER.filter(([flag]) => ev[flag]).map(([, name]) => name);
+  return [...mods, ev.key].join('+');
 }
 
-// Resolve an action's selector to a single locator.
-function loc(page, action) {
-  if (!action.selector) throw new Error(`"${action.type}" action needs a "selector"`);
-  const base = page.locator(action.selector);
-  return action.nth !== undefined ? base.nth(action.nth) : base.first();
+const CURSOR_BEARING = new Set(['click', 'rightClick', 'dblclick', 'hover', 'fill']);
+
+// Resolve the absolute viewport coords for a selector + optional position.
+async function resolveTargetPoint(page, ev) {
+  if (!ev.selector) throw new Error(`"${ev.type}" needs a "selector"`);
+  const base = page.locator(ev.selector);
+  const loc = ev.nth !== undefined ? base.nth(ev.nth) : base.first();
+  const box = await loc.boundingBox();
+  if (!box) throw new Error(`"${ev.selector}" has no bounding box`);
+  const pos = ev.position || { x: box.width / 2, y: box.height / 2 };
+  return { x: box.x + pos.x, y: box.y + pos.y };
 }
 
-// Shared options for click-family actions.
-function clickOpts(action) {
-  const opts = { timeout: action.timeoutMs ?? 15000 };
-  if (action.position) opts.position = action.position;
-  if (action.button) opts.button = action.button;
-  if (action.clickCount) opts.clickCount = action.clickCount;
-  return opts;
-}
+// Run a single event. `ctx` carries page, cursor, rng, humanize config.
+export async function runEvent(ev, ctx) {
+  // Tiny pre-action hesitation — humans don't fire the next click on the
+  // same frame they finished the last one.
+  if (CURSOR_BEARING.has(ev.type)) {
+    const pap = ctx.humanize?.preActionPause;
+    if (pap) {
+      const ms = Math.round(sample(ctx.rng, pap, { fallback: 0 }));
+      if (ms > 0) await ctx.page.waitForTimeout(ms);
+    }
+  }
 
-async function runAction(page, action) {
-  switch (action.type) {
+  switch (ev.type) {
     case 'press': {
-      if (!action.key) throw new Error('"press" action needs a "key"');
-      await page.keyboard.press(keyCombo(action));
+      if (!ev.key) throw new Error('"press" needs a "key"');
+      await ctx.page.keyboard.press(keyCombo(ev));
       return;
     }
+
     case 'type': {
-      await page.keyboard.type(action.text ?? '', { delay: action.delay ?? 25 });
+      const delay = ev.delay ?? Math.round(sample(ctx.rng, [40, 95], { fallback: 50 }));
+      await ctx.page.keyboard.type(ev.text ?? '', { delay });
       return;
     }
+
     case 'fill': {
-      // Focus, clear, and set an input/textarea in one robust step.
-      await loc(page, action).fill(action.text ?? '', { timeout: action.timeoutMs ?? 15000 });
+      // Visible typing, not Playwright's instant `.fill()`: move cursor →
+      // click to focus → clear any existing content → type each char with a
+      // jittered delay. Looks like a human typing, not a script teleporting
+      // text into a box.
+      const pt = await resolveTargetPoint(ctx.page, ev);
+      await ctx.cursor.moveTo(pt.x, pt.y);
+      await ctx.cursor.hesitate();
+      await ctx.page.mouse.click(pt.x, pt.y);
+      const loc = ctx.page.locator(ev.selector).first();
+      await loc.fill('');
+      const text = ev.text ?? '';
+      const keyDelay = ev.delay; // optional override
+      for (const ch of text) {
+        await ctx.page.keyboard.type(ch);
+        const wait = keyDelay !== undefined
+          ? Math.round(sample(ctx.rng, keyDelay, { fallback: 80 }))
+          : Math.round(sample(ctx.rng, [55, 135], { fallback: 80 }));
+        if (wait > 0) await ctx.page.waitForTimeout(wait);
+      }
       return;
     }
-    case 'click': {
-      await loc(page, action).click(clickOpts(action));
-      return;
-    }
-    case 'rightClick': {
-      await loc(page, action).click({ ...clickOpts(action), button: 'right' });
-      return;
-    }
+
+    case 'click':
+    case 'rightClick':
     case 'dblclick': {
-      await loc(page, action).dblclick(clickOpts(action));
+      const pt = await resolveTargetPoint(ctx.page, ev);
+      await ctx.cursor.moveTo(pt.x, pt.y);
+      await ctx.cursor.hesitate();
+      const button = ev.type === 'rightClick' ? 'right' : (ev.button || 'left');
+      if (ev.type === 'dblclick') {
+        await ctx.page.mouse.dblclick(pt.x, pt.y, { button });
+      } else {
+        await ctx.page.mouse.click(pt.x, pt.y, { button });
+      }
       return;
     }
+
     case 'hover': {
-      await loc(page, action).hover({ timeout: action.timeoutMs ?? 15000, position: action.position });
+      const pt = await resolveTargetPoint(ctx.page, ev);
+      await ctx.cursor.moveTo(pt.x, pt.y);
       return;
     }
+
     case 'wait': {
-      await page.waitForTimeout(action.ms ?? 0);
+      const ms = ev.ms !== undefined
+        ? Math.round(sample(ctx.rng, ev.ms, { jitter: ctx.humanize?.jitter || 0, fallback: 0 }))
+        : 0;
+      if (ms > 0) await ctx.page.waitForTimeout(ms);
       return;
     }
+
     case 'waitForSelector': {
-      if (!action.selector) throw new Error('"waitForSelector" action needs a "selector"');
-      await page.waitForSelector(action.selector, {
-        state: action.state || 'visible',
-        timeout: action.timeoutMs ?? 30000,
+      if (!ev.selector) throw new Error('"waitForSelector" needs a "selector"');
+      await ctx.page.waitForSelector(ev.selector, {
+        state: ev.state || 'visible',
+        timeout: ev.timeoutMs ?? 30000,
       });
       return;
     }
+
     case 'scroll': {
-      if (action.selector) await loc(page, action).hover({ timeout: action.timeoutMs ?? 15000 });
-      await page.mouse.wheel(action.deltaX ?? 0, action.deltaY ?? 0);
-      return;
-    }
-    case 'mouseMove': {
-      await page.mouse.move(action.x ?? 0, action.y ?? 0, { steps: action.steps ?? 10 });
-      return;
-    }
-    case 'drag': {
-      // Press on `selector`, glide to a destination, release. Covers both
-      // node repositioning (drop at `to` coords) and React Flow handle wiring
-      // (drop onto `toSelector`, another handle). Stepped moves are required
-      // so React Flow / DnD see intermediate mousemove events.
-      const src = loc(page, action);
-      const sb = await src.boundingBox();
-      if (!sb) throw new Error(`"drag": source "${action.selector}" has no bounding box`);
-      const sp = action.position || { x: sb.width / 2, y: sb.height / 2 };
-      const sx = sb.x + sp.x;
-      const sy = sb.y + sp.y;
-
-      let tx;
-      let ty;
-      if (action.toSelector) {
-        const dst = page.locator(action.toSelector).first();
-        const db = await dst.boundingBox();
-        if (!db) throw new Error(`"drag": toSelector "${action.toSelector}" has no bounding box`);
-        const tp = action.toPosition || { x: db.width / 2, y: db.height / 2 };
-        tx = db.x + tp.x;
-        ty = db.y + tp.y;
-      } else if (action.to) {
-        tx = action.to.x;
-        ty = action.to.y;
-      } else {
-        throw new Error('"drag" action needs "to" {x,y} or "toSelector"');
+      if (ev.selector) {
+        const pt = await resolveTargetPoint(ctx.page, ev);
+        await ctx.cursor.moveTo(pt.x, pt.y);
       }
+      await ctx.page.mouse.wheel(ev.deltaX ?? 0, ev.deltaY ?? 0);
+      return;
+    }
 
-      const steps = action.steps ?? 20;
-      await page.mouse.move(sx, sy);
-      await page.mouse.down();
-      await page.mouse.move(sx + 8, sy + 4, { steps: 4 }); // nudge to start the drag
-      await page.mouse.move(tx, ty, { steps });
-      await page.mouse.move(tx, ty, { steps: 3 }); // settle on the target
-      await page.mouse.up();
-      return;
-    }
     case 'eval': {
-      if (!action.script) throw new Error('"eval" action needs a "script"');
-      // Runs the expression string in the page context.
-      await page.evaluate(action.script);
+      if (!ev.script) throw new Error('"eval" needs a "script"');
+      await ctx.page.evaluate(ev.script);
       return;
     }
+
     case 'injectFlow': {
-      // Build a node graph via the target app's `window.__injectFlow` test hook
-      // — far more reliable than choreographing drags. `file` is a flow JSON
-      // ({ nodes, edges }); optional `nodeCount` injects only the first N nodes
-      // (+ edges among them) so a scene can animate the build progressively.
-      if (!action.file) throw new Error('"injectFlow" action needs a "file"');
-      const flowPath = path.resolve(action.file);
-      if (!fs.existsSync(flowPath)) throw new Error(`"injectFlow": flow file not found: ${flowPath}`);
+      if (!ev.file) throw new Error('"injectFlow" needs a "file"');
+      const flowPath = path.resolve(ev.file);
+      if (!fs.existsSync(flowPath)) throw new Error(`injectFlow: ${flowPath} not found`);
       const flow = JSON.parse(fs.readFileSync(flowPath, 'utf8'));
       let nodes = flow.nodes || [];
       let edges = flow.edges || [];
-      if (action.nodeCount !== undefined) {
-        nodes = nodes.slice(0, action.nodeCount);
+      if (ev.nodeCount !== undefined) {
+        nodes = nodes.slice(0, ev.nodeCount);
         const ids = new Set(nodes.map((n) => n.id));
         edges = edges.filter((e) => ids.has(e.source) && ids.has(e.target));
       }
-      const ok = await page.evaluate(({ n, e }) => {
+      const ok = await ctx.page.evaluate(({ n, e }) => {
         if (typeof window.__injectFlow !== 'function') return false;
         window.__injectFlow({ nodes: n, edges: e });
         return true;
@@ -164,26 +162,9 @@ async function runAction(page, action) {
       if (!ok) throw new Error('"injectFlow": window.__injectFlow is not available on the page');
       return;
     }
-    default:
-      throw new Error(`Unknown action type: "${action.type}"`);
-  }
-}
 
-export async function runActions(page, actions, label = 'actions', hooks = {}) {
-  if (!actions || actions.length === 0) return;
-  for (let i = 0; i < actions.length; i++) {
-    const action = actions[i];
-    const detail =
-      action.selector ? ` ${action.selector}` :
-      action.key ? ` ${keyCombo(action)}` :
-      action.ms !== undefined ? ` ${action.ms}ms` : '';
-    log.info(`  ${label}[${i}]: ${action.type}${detail}`);
-    // `focus` is a camera-keyframe marker, not a page interaction: it tells the
-    // recorder to centre the (panning) crop window on `selector` at this moment.
-    if (action.type === 'focus') {
-      if (hooks.onFocus) await hooks.onFocus(action);
-      continue;
-    }
-    await runAction(page, action);
+    default:
+      // Camera/reveal/attention are dispatched in record.js, never here.
+      throw new Error(`Unknown input event type: "${ev.type}"`);
   }
 }

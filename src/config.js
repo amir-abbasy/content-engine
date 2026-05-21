@@ -21,6 +21,21 @@ export const DEFAULTS = {
     headless: false,
     timelineOffsetMs: 0,
     settleMs: 400,
+    // Humanization: jittered timing + seeded reproducibility.
+    humanize: {
+      seed: 1,
+      jitter: 0.15,
+      scale: 1.0,
+      preActionPause: [120, 280],
+    },
+    // Cursor personality: bezier travel with overshoot + hover hesitation.
+    cursor: {
+      movement: 'human',
+      duration: [380, 720],
+      overshoot: 0.12,
+      hesitation: [70, 180],
+      curvature: 0.4,
+    },
   },
   output: {
     dir: 'output',

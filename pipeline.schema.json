@@ -71,6 +71,7 @@
             "zoomMs":     { "type": "integer", "default": 1000, "description": "Duration of the zoom-IN transition." },
             "zoomOutMs":  { "type": "integer", "default": 1000, "description": "Duration of the zoom-OUT transition (defaults to zoomMs). Set lower for a snappy reset." },
             "holdMs":     { "type": "integer", "default": 600, "description": "Hold at full zoom before pulling back out." },
+            "panMs":      { "type": "integer", "default": 300, "description": "Fast inter-hotspot glide: the camera holds on the current node, then snaps to the next over this short window (instead of drifting across the whole gap). Lower = snappier." },
             "mergeGapMs": { "type": "integer", "default": 2500, "description": "Hotspots closer than this merge into one zoom session (punch in once, hold across all, pull out after the last)." },
             "ease":       { "$ref": "#/definitions/ease" }
           }
@@ -105,7 +106,9 @@
         },
         "fps":     { "type": "integer", "default": 30 },
         "fitMode": { "type": "string", "enum": ["cover", "contain"], "default": "cover", "description": "cover = scale-to-fill + center-crop; contain = scale-to-fit + pad." },
-        "keepRaw": { "type": "boolean", "default": true }
+        "keepRaw": { "type": "boolean", "default": true },
+        "speed":   { "type": "number", "default": 1.0, "minimum": 1, "description": "Playback speed-up applied to every clip (setpts) for a punchy social pace. 1 = real time." },
+        "maxTotalSec": { "type": "number", "description": "If set, auto-derives a speed-up so the FINAL video (all clips combined) fits within this many seconds. Whichever is larger — this or `speed` — wins." }
       }
     },
     "scenes": {

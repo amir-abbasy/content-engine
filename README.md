@@ -1,13 +1,19 @@
 # Content Engine
 
-Build modular short-form trading content — 30-50s vertical (9:16) reels for
+Build modular short-form trading content — punchy vertical (9:16) reels for
 Instagram / TikTok / Shorts — by automating a real web app, recording it, and
 slicing the session into eased, humanized scene clips driven by a single JSON
-timeline.
+timeline. A configurable **speed-up** compresses the finished video to a social
+pace (e.g. ≤ 20s) without breaking the recording.
 
 The whole reel is **data**. Every cursor move, dropdown click, color pick,
-camera pan, spotlight, and click ripple is an event on a typed track in
+camera zoom, spotlight, and click ripple is an event on a typed track in
 `pipeline.json`. Re-running with the same `seed` produces the same performance.
+
+The camera is **automatic**: you describe the actions, and the engine derives a
+Screen Studio-style camera that glides to each hotspot, zooms in to frame what
+you're doing, holds locked while you type/choose, then snaps back out centered
+on the node you just built. See [Automatic camera](#automatic-camera).
 
 ---
 
@@ -18,8 +24,10 @@ camera pan, spotlight, and click ripple is an event on a typed track in
 3. Walks an ordered list of **scenes** in one continuous browser recording.
 4. Inside each scene: a scheduler dispatches events from per-track lists
    (`input`, `camera`, `reveal`, `attention`) by their absolute `at` time.
-5. Slices the raw `.webm` and crops each scene to a vertical 9:16 clip with an
-   eased camera pan baked into the ffmpeg crop expression.
+5. Slices the raw `.webm` and crops each scene to a vertical 9:16 clip with the
+   eased camera pan **and zoom** baked into the ffmpeg crop/zoompan expression.
+6. Optionally time-compresses each clip (`setpts`) so the whole reel fits a
+   target length — see [Speed-up](#speed-up).
 
 The app itself is **not** made responsive — each scene crops a sub-region of
 the desktop canvas, so different scenes can use different panes or screen
@@ -46,10 +54,17 @@ npm run record:headed          # force a visible window
 npm run record:headless        # force headless
 
 node src/record.js my.json --headless --out builds --url http://localhost:5173/
+node src/record.js --max-total-sec 15   # cap the final video at 15s
+node src/record.js --speed 2.0          # explicit 2× speed-up
+node --env-file=.env src/record.js      # load env vars from .env (Node 22+)
 ```
 
 CLI flags override the pipeline file: `--headed`, `--headless`, `--out <dir>`,
-`--url <url>`.
+`--url <url>`, `--speed <n>`, `--max-total-sec <n>`.
+
+Env vars (override `pipeline.json`, overridden by CLI): `OUTPUT_SPEED`,
+`OUTPUT_MAX_TOTAL_SEC`, `FFMPEG_PATH`, `FFPROBE_PATH`. Precedence for any value:
+**CLI flag > env var > pipeline.json > built-in default**.
 
 ### Output
 
@@ -87,18 +102,19 @@ Top-level shape:
     "browser": "chromium",
     "headless": false,
     "timelineOffsetMs": 0,
-    "settleMs": 600,
+    "settleMs": 300,
     "humanize": {
       "seed": 7,                    // PRNG seed — same seed = same performance
       "jitter": 0.15,               // ±15% randomness on numeric durations
       "scale": 1.0,                 // global multiplier
-      "preActionPause": [120, 280]  // ms; tiny hesitation before each click/fill
+      "preActionPause": [40, 90]    // ms; tiny hesitation before each click/fill
     },
+    "autoZoom": { /* see "Automatic camera" below */ },
     "cursor": {
       "movement": "human",           // "human" (bezier) | "linear"
-      "duration":   [380, 720],      // ms travel time per move
+      "duration":   [140, 260],      // ms travel time per move
       "overshoot":  0.12,            // fractional overshoot past target
-      "hesitation": [70, 180],       // ms hover before clicking
+      "hesitation": [25, 60],        // ms hover before clicking
       "curvature":  0.4              // bezier control-point bend
     }
   },
@@ -107,11 +123,17 @@ Top-level shape:
     "resolution": { "width": 1080, "height": 1920 },
     "fps": 30,
     "fitMode": "cover",             // cover = scale-fill + center-crop
-    "keepRaw": true
+    "keepRaw": true,
+    "speed": 1.0,                   // explicit playback speed-up (>=1)
+    "maxTotalSec": 19               // auto-derive a speed-up so the reel fits this
   },
   "scenes": [ /* see below */ ]
 }
 ```
+
+> The timing values above are tuned for a **fast social pace** — short cursor
+> travel, brief pauses, and a speed-up. Raise them (and drop `speed` /
+> `maxTotalSec`) for a calmer, more deliberate feel.
 
 ### Scenes as timeline tracks
 
@@ -123,16 +145,17 @@ on an absolute, scene-relative time axis (seconds):
   "id": "01-build-strategy",
   "description": "Build Candles -> 2 EMAs -> 2 Plots",
   "target": { "selector": ".react-flow", "aspect": "9:16", "anchor": "center" },
-  "durationSec": 44.5,
-  "holdAfterSec": 1.0,
+  "durationSec": 28.0,
+  "holdAfterSec": 0.5,
+  "autoCamera": true,             // derive the camera from the input track
   "setup": [
     { "at": 0.0, "type": "press",      "key": "Digit2", "shift": true },
     { "at": 0.5, "type": "injectFlow", "file": "flows/ema-plot.json" },
     { "at": 1.8, "type": "injectFlow", "file": "flows/ema-plot.json", "nodeCount": 0 }
   ],
   "tracks": {
-    "input":     [ /* events the user does — clicks, fills, etc */ ],
-    "camera":    [ /* explicit pan keyframes with per-segment ease */ ],
+    "input":     [ /* events the user does — clicks, fills, etc (tag hotspots with focusZoom) */ ],
+    "camera":    [ /* OPTIONAL: explicit keyframes; omit to use the automatic camera */ ],
     "reveal":    [],   // RESERVED: progressive node/port/edge reveals
     "attention": [ /* spotlight / mark / pulse / dim / release */ ]
   }
@@ -189,7 +212,9 @@ hesitation, then click.
 | `injectFlow`      | Build a node graph via `window.__injectFlow` — `file` (+ `nodeCount`) |
 
 Selectors that match multiple elements resolve to the **first** match (override
-with `nth`).
+with `nth`). A selector that never appears fails fast (~6s, not Playwright's
+30s default) so a typo can't balloon the recording; override per event with
+`timeoutMs`.
 
 `cameraFollow: true` on an input event auto-emits a camera keyframe at the
 event's target the moment it fires.
@@ -215,36 +240,69 @@ consecutive keyframes with the same value = hold. Both pan and `zoom` are eased
 and baked into the ffmpeg crop: the crop window shrinks (`bbox / zoom`) and the
 `zoompan` filter scales it back to the output resolution = a real zoom-in.
 
-### Automatic zoom (Screen Studio-style)
+### Automatic camera
 
 Authoring camera keyframes by hand is tedious. Set `record.autoZoom.enabled`
 and the engine **derives the whole camera track from your input actions** — no
-`camera` track needed. Every cursor action (`click`/`rightClick`/`fill`/…) and
-every node reveal (`injectFlow`) becomes a *focus moment*: the camera arrives
-on that element just before it happens, zooms in, holds, then eases to the next
-moment — dipping to a wide shot when two moments are far apart (idle / scene
-change).
+`camera` track needed. The camera rests at a wide 9:16 view and only moves for
+**hotspots**: input events you tag with `focusZoom`. Each hotspot plays one
+clean beat:
+
+1. **Glide** — hold on the previous node, then snap to the hotspot over `panMs`
+   (a fast move, not a slow drift across the gap).
+2. **Zoom in** — wait `delayMs` after the triggering action, then zoom in over
+   `zoomMs` to frame the search menu / input / dialog.
+3. **Hold** — stay **pixel-locked** on that element while you type and choose
+   (one resolved position is reused, so there's zero drift).
+4. **Pull out** — zoom out over `zoomOutMs`, ending **centered on the node that
+   was just added/edited** (so it's always visible), then glide to the next.
 
 ```jsonc
 "record": {
   "autoZoom": {
     "enabled": true,
-    "zoom": 1.85,          // zoom on each cursor action
-    "revealZoom": 1.5,     // zoom when framing a freshly-injected node
-    "wideZoom": 1.2,       // resting / establishing / idle-dip zoom
-    "leadMs": 450,         // arrive on target this long BEFORE the action
-    "holdMs": 450,         // linger this long AFTER it
-    "clusterGapMs": 1700,  // gap larger than this ⇒ dip to wideZoom between
+    "lockX": false,        // false = camera pans horizontally to each hotspot;
+                           // true  = pinned to centre (zoom only, no L/R pan)
+    "restZoom": 1.0,       // resting / wide zoom between hotspots
+    "focusZoom": 2.0,      // default punch-in zoom for a hotspot
+    "delayMs": 350,        // wait this long after the action before zooming in
+    "zoomMs": 500,         // zoom-IN duration
+    "zoomOutMs": 300,      // zoom-OUT (pull-back) duration — snappier
+    "holdMs": 400,         // min hold for inputs with no explicit commit
+    "panMs": 250,          // fast inter-hotspot glide
     "ease": "cubic-in-out"
   }
 }
 ```
 
+**Timing is anchored to REAL events, not the plan.** Each segment's start/end is
+pinned to when the triggering input *actually* fires (+ an exact offset), so the
+designed durations stay precise no matter how cursor travel or typing drifts —
+and the pull-out can never fire before the thing it's waiting on:
+
+- **Search** (`fill` on the node-search box): zoom-in starts after the opening
+  right-click; the camera holds until the picked node **lands in the flow** (the
+  following `injectFlow`), then pulls out.
+- **Color / dialog** (a click that opens a `[role="dialog"]`): holds until the
+  **swatch is clicked**, then pulls out.
+- **Value input** (`fill` on a field): zoom in, hold `holdMs`, pull out.
+
+Segments are **atomic** — a hotspot's pull-out always finishes before the next
+zoom-in begins, so two hotspots can never interleave (no camera "shaking").
+
+Per-event hints on any input event:
+
+- `"focusZoom": 2.4` — makes this event a hotspot and sets its zoom (tighter for
+  a small input, wider for a menu). Element-anchored — locks onto the live
+  element with no cursor jitter.
+- `"focusSelector": "[role=\"dialog\"]"` — frame a **different** element than the
+  one acted on (e.g. click a node's swatch but frame the color popover).
+- `"noFocus": true` — exclude an event from triggering a zoom.
+
+Notes:
+
 - A scene uses auto-camera when `autoZoom.enabled` and it has no manual `camera`
-  track. Force it per-scene with `"autoCamera": true`, or opt out with `false`.
-- Add `"focusZoom": 2.2` to any input event to override the base zoom for that
-  one action (push tighter on a small input, wider on a menu). Element-anchored,
-  so it locks onto the live element with no cursor jitter.
+  track. Force per-scene with `"autoCamera": true`, or opt out with `false`.
 - The manual `camera` track and auto-camera are mutually exclusive per scene —
   use the manual track for deliberate non-action moves (e.g. a slow chart pan).
 
@@ -279,6 +337,39 @@ and warn. Intended for staggered node/port/edge/parameter reveals.
 
 ---
 
+## Speed-up
+
+The recording runs at a realistic pace (the app needs real time to open menus,
+render nodes, etc.), but the **finished clips are time-compressed** for a punchy
+social feel. This is post-processing only — applied as a final `setpts` stage in
+the ffmpeg filter, so the actual interactions always record at normal speed and
+nothing breaks; only playback is faster.
+
+Two knobs, in [`output`](#the-pipeline-file) (also settable via env / CLI):
+
+| Key            | Meaning                                                              |
+|----------------|----------------------------------------------------------------------|
+| `speed`        | Explicit multiplier applied to every clip (`1.0` = real time).        |
+| `maxTotalSec`  | Auto-derive a multiplier so the **combined** video fits this length.  |
+
+Whichever implies the larger speed-up wins, and the factor is applied uniformly
+to every scene so motion stays consistent. With `maxTotalSec` set, the final
+length is **guaranteed** to fit regardless of how long the raw recording drifts
+— the engine measures the real scene durations and computes the factor. The run
+log prints `Speed-up ×N (raw Xs → ~Ys)`.
+
+```bash
+# all three set the same thing; CLI > env > pipeline.json
+node src/record.js --max-total-sec 19
+OUTPUT_MAX_TOTAL_SEC=19 npm run record
+# or in pipeline.json: "output": { "maxTotalSec": 19 }
+```
+
+For a hard real-time cut (no speed-up) set `speed: 1` and omit `maxTotalSec` (or
+set it larger than the raw length).
+
+---
+
 ## Cinematography model
 
 The "feels human, not scripted" comes from layering:
@@ -288,8 +379,9 @@ The "feels human, not scripted" comes from layering:
 2. **Humanized cursor** (`record.cursor`) — quadratic bezier path with
    perpendicular bend, eased velocity, slight overshoot + correction at the
    destination, hover hesitation before the click.
-3. **Eased camera** — per-keyframe `ease` baked into ffmpeg crop expressions
-   so pans accelerate / settle instead of running constant-velocity.
+3. **Eased camera** — per-keyframe `ease` baked into ffmpeg crop expressions so
+   pans/zooms accelerate / settle instead of running constant-velocity, with a
+   fast `panMs` snap between hotspots and a locked hold while you work.
 4. **Visible click effects** — a page-injected cursor image (configurable URL
    in [src/lib/cursor.js](src/lib/cursor.js)) follows real mouse events;
    `mousedown` spawns a large concentric-ring ripple (yellow for right-click,
@@ -298,6 +390,9 @@ The "feels human, not scripted" comes from layering:
    edit; `spotlight` keeps focus on the active node while the rest dims.
 6. **Char-by-char typing** — `fill` clicks the input then types each character
    with per-key jittered delay instead of Playwright's instant `.fill()`.
+
+7. **Speed-up** — the finished clips are time-compressed (`setpts`) to a social
+   pace; the recording itself stays real-time so interactions don't break.
 
 Reproducibility: change `record.humanize.seed` to roll a different
 performance; keep it fixed and re-runs are identical.
@@ -313,8 +408,12 @@ scheduled wall-clock, then fires the handler.
 
 Drift handling is **strict** — if a cursor-bearing event takes longer than the
 gap to the next event, the next event fires immediately (no shift). Author
-realistic spacing (~1.0–1.5s between cursor-bearing events; cycles of ~7–9s
-per multi-event sequence).
+realistic spacing between cursor-bearing events.
+
+The **camera is immune to this drift**: each auto-camera keyframe records the
+*actual* fire time of the input event it's anchored to (plus an exact offset),
+so zoom-in/out durations and trigger points stay precise even when actions run
+late. Camera positions still resolve live against the real DOM.
 
 If clips look a few frames early / late after crop, tune
 `record.timelineOffsetMs`.
@@ -332,6 +431,7 @@ src/config.js              defaults + CLI parsing
 src/lib/pipeline.js        load + validate the timeline
 src/lib/browser.js         launch context, inject overlays, wait for Pyodide
 src/lib/timeline.js        scheduler: sort by `at` -> dispatch
+src/lib/autocamera.js      derive the camera track from input hotspots
 src/lib/actions.js         per-event handlers (cursor-driver-aware)
 src/lib/cursor.js          page-injected cursor image + ripple overlay (CSS)
 src/lib/cursor-driver.js   humanized mouse (bezier, overshoot, hesitation)

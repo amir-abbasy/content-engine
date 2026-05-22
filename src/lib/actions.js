@@ -88,8 +88,8 @@ export async function runEvent(ev, ctx) {
       for (const ch of text) {
         await ctx.page.keyboard.type(ch);
         const wait = keyDelay !== undefined
-          ? Math.round(sample(ctx.rng, keyDelay, { fallback: 80 }))
-          : Math.round(sample(ctx.rng, [55, 135], { fallback: 80 }));
+          ? Math.round(sample(ctx.rng, keyDelay, { fallback: 30 }))
+          : Math.round(sample(ctx.rng, [22, 50], { fallback: 30 }));
         if (wait > 0) await ctx.page.waitForTimeout(wait);
       }
       return;

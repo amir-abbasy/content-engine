@@ -138,10 +138,15 @@ function zoompanStage(bbox, pan, resolution, fps) {
   return `zoompan=z='${zExpr}':d=1:s=${resolution.width}x${resolution.height}:x='${xExpr}':y='${yExpr}':fps=${fps}`;
 }
 
-function buildFilter({ bbox, pan, videoSize, resolution, fps, fitMode }) {
+function buildFilter({ bbox, pan, videoSize, resolution, fps, fitMode, speed = 1 }) {
   const { width: rw, height: rh } = resolution;
   // Reset PTS so the crop filter's `t` is clip-relative (0-based).
   const resetPts = 'setpts=PTS-STARTPTS';
+  // Time-compress the finished clip for a punchy social-media pace. Applied
+  // LAST: pan/zoom expressions use the input frame's `t`, so they animate at
+  // authored timing; setpts then plays the whole thing `speed`× faster. `-r`
+  // resamples to the target fps afterwards. (Pure video — no audio to resync.)
+  const speedPts = speed && speed !== 1 ? [`setpts=PTS/${speed}`] : [];
   const hasZoom = pan && pan.some((k) => typeof k.zoom === 'number' && k.zoom !== 1);
   // lanczos = sharper upscaling than the default bilinear; zoom amplifies any
   // softness, so use it on every scale stage.
@@ -155,6 +160,7 @@ function buildFilter({ bbox, pan, videoSize, resolution, fps, fitMode }) {
       panCropXOnly(bbox, pan, videoSize),
       `fps=${fps}`,
       zoompanStage(bbox, pan, resolution, fps),
+      ...speedPts,
     ].join(',');
   }
 
@@ -166,6 +172,7 @@ function buildFilter({ bbox, pan, videoSize, resolution, fps, fitMode }) {
       cropRegion,
       `scale=${rw}:${rh}:force_original_aspect_ratio=decrease:${sws}`,
       `pad=${rw}:${rh}:(ow-iw)/2:(oh-ih)/2:color=black`,
+      ...speedPts,
     ].join(',');
   }
   // cover: scale to fill the frame, then centre-crop the overflow.
@@ -174,16 +181,17 @@ function buildFilter({ bbox, pan, videoSize, resolution, fps, fitMode }) {
     cropRegion,
     `scale=${rw}:${rh}:force_original_aspect_ratio=increase:${sws}`,
     `crop=${rw}:${rh}`,
+    ...speedPts,
   ].join(',');
 }
 
 // Slice + crop one scene. Times are in milliseconds relative to raw video t0.
 // `pan` (optional) makes the crop window follow keyframes; if any keyframe has
 // a `zoom`, the window also zooms via a zoompan stage.
-export async function cropScene({ rawVideo, startMs, endMs, bbox, output, resolution, fps, fitMode, pan, videoSize }) {
+export async function cropScene({ rawVideo, startMs, endMs, bbox, output, resolution, fps, fitMode, pan, videoSize, speed = 1 }) {
   const start = Math.max(0, startMs) / 1000;
   const duration = Math.max(0.1, (endMs - startMs) / 1000);
-  const filter = buildFilter({ bbox, pan, videoSize, resolution, fps, fitMode });
+  const filter = buildFilter({ bbox, pan, videoSize, resolution, fps, fitMode, speed });
 
   const args = [
     '-y',

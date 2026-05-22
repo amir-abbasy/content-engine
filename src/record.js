@@ -13,7 +13,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseCli } from './config.js';
+import { parseCli, numOpt } from './config.js';
 import { loadPipeline } from './lib/pipeline.js';
 import { launchRecorder, waitForPyodide } from './lib/browser.js';
 import { runEvent } from './lib/actions.js';
@@ -286,6 +286,12 @@ async function main() {
   if (cli.outDir) pipeline.output.dir = cli.outDir;
   if (cli.url) pipeline.app.url = cli.url;
 
+  // Speed-up controls: CLI flag > env var > pipeline.json > built-in default.
+  const speedOverride = cli.speed ?? numOpt(process.env.OUTPUT_SPEED);
+  if (speedOverride !== undefined) pipeline.output.speed = speedOverride;
+  const maxTotalOverride = cli.maxTotalSec ?? numOpt(process.env.OUTPUT_MAX_TOTAL_SEC);
+  if (maxTotalOverride !== undefined) pipeline.output.maxTotalSec = maxTotalOverride;
+
   const runId = `${pipeline.name}-${timestamp()}`;
   const runDir = path.resolve(pipeline.output.dir, runId);
   const rawDir = path.join(runDir, 'raw');
@@ -310,6 +316,23 @@ async function main() {
   const rawDurationMs = rawDuration * 1000;
   const scale = wallSpanMs > 0 ? rawDurationMs / wallSpanMs : 1;
   const offset = pipeline.record.timelineOffsetMs || 0;
+
+  // Playback speed-up for a social-media pace. `output.speed` is an explicit
+  // multiplier; `output.maxTotalSec` auto-derives a speed so the FINAL video
+  // (sum of all clips) fits the cap — whichever is larger wins. Computed once
+  // and applied uniformly to every scene so motion stays consistent.
+  const sceneRawSec = scenesMeta.map((m) => {
+    const st = Math.max(0, m.startMs * scale + offset);
+    const en = Math.min(rawDurationMs, m.endMs * scale + offset);
+    return Math.max(0, (en - st) / 1000);
+  });
+  const totalRawSec = sceneRawSec.reduce((a, b) => a + b, 0);
+  let speed = pipeline.output.speed || 1;
+  if (pipeline.output.maxTotalSec && totalRawSec > 0) {
+    speed = Math.max(speed, totalRawSec / pipeline.output.maxTotalSec, 1);
+  }
+  if (speed !== 1) log.info(`Speed-up ×${speed.toFixed(2)} (raw ${totalRawSec.toFixed(1)}s → ~${(totalRawSec / speed).toFixed(1)}s)`);
+
   const results = [];
 
   for (const meta of scenesMeta) {
@@ -342,6 +365,7 @@ async function main() {
         fitMode: meta.fitMode,
         pan,
         videoSize: pipeline.app.viewport,
+        speed,
       });
       results.push({ ...meta, startMs, endMs, clip, status: 'ok' });
       log.ok(`  scenes/${meta.id}.mp4`);

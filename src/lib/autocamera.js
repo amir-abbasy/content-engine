@@ -51,6 +51,9 @@ export function buildAutoCamera(inputEvents, cfg = {}) {
   const zoomMs = cfg.zoomMs ?? 1000;
   const zoomOutMs = cfg.zoomOutMs ?? cfg.zoomMs ?? 1000;
   const holdMs = cfg.holdMs ?? 1000;
+  const panMs = cfg.panMs ?? 300; // fast inter-hotspot glide — the camera HOLDS
+  // on the current node, then snaps to the next over this short window (instead
+  // of drifting slowly across the whole gap).
   const baseFocus = cfg.focusZoom ?? 2.0;
   const ease = cfg.ease || 'cubic-in-out';
 
@@ -62,6 +65,7 @@ export function buildAutoCamera(inputEvents, cfg = {}) {
   const firstCursor = sorted.find((e) => (e.selector || e.point) && CURSOR.includes(e.type)) || hotspots[0];
   // Opening rest keyframe: full view, no anchor (pinned to scene start).
   const kfs = [{ at: 0, ...anchorOf(firstCursor), zoom: restZoom, ease: 'cubic-out', tAnchor: null }];
+  let prevRestSel = anchorOf(firstCursor).selector || '.react-flow__pane';
 
   hotspots.forEach((h, hi) => {
     const z = h.focusZoom ?? baseFocus;
@@ -125,10 +129,15 @@ export function buildAutoCamera(inputEvents, cfg = {}) {
       }
     }
 
-    kfs.push({ at: round(planInStart),                     ...inA,  zoom: restZoom, ease,           focusGroup: fg, seg: hi, tAnchor: { ref: inRef,  offsetMs: inStartOff } });             // about to zoom
-    kfs.push({ at: round(planInStart + zoomMs / 1000),     ...inA,  zoom: z,        ease,           focusGroup: fg, seg: hi, tAnchor: { ref: inRef,  offsetMs: inStartOff + zoomMs } });    // ZOOM IN
-    kfs.push({ at: round(planOutStart),                    ...inA,  zoom: z,        ease: 'linear', focusGroup: fg, seg: hi, tAnchor: { ref: outRef, offsetMs: outStartOff } });            // HOLD — locked still
-    kfs.push({ at: round(planOutStart + zoomOutMs / 1000), selector: restSel, zoom: restZoom, ease,               seg: hi, tAnchor: { ref: outRef, offsetMs: outStartOff + zoomOutMs } }); // ZOOM OUT, centred on the node
+    // Hold on the PREVIOUS node, then snap over `panMs` to this hotspot — the
+    // pan is fast no matter how long the gap is (the camera just waits longer
+    // on the previous node). Anchored to the same event as the zoom-in.
+    kfs.push({ at: round(planInStart - panMs / 1000),      selector: prevRestSel, zoom: restZoom, ease: 'linear',  seg: hi, tAnchor: { ref: inRef,  offsetMs: Math.max(0, inStartOff - panMs) } }); // hold on prev node
+    kfs.push({ at: round(planInStart),                     ...inA,  zoom: restZoom, ease: 'cubic-out',   focusGroup: fg, seg: hi, tAnchor: { ref: inRef,  offsetMs: inStartOff } });             // fast-glide arrived, about to zoom
+    kfs.push({ at: round(planInStart + zoomMs / 1000),     ...inA,  zoom: z,        ease,               focusGroup: fg, seg: hi, tAnchor: { ref: inRef,  offsetMs: inStartOff + zoomMs } });    // ZOOM IN
+    kfs.push({ at: round(planOutStart),                    ...inA,  zoom: z,        ease: 'linear',     focusGroup: fg, seg: hi, tAnchor: { ref: outRef, offsetMs: outStartOff } });            // HOLD — locked still
+    kfs.push({ at: round(planOutStart + zoomOutMs / 1000), selector: restSel, zoom: restZoom, ease,                   seg: hi, tAnchor: { ref: outRef, offsetMs: outStartOff + zoomOutMs } }); // ZOOM OUT, centred on the node
+    prevRestSel = restSel; // next hotspot glides FROM this node
   });
   return kfs;
 }

@@ -22,7 +22,7 @@
     },
     "autoZoom": {
       "enabled": true,
-      "lockX": true,
+      "lockX": false,
       "restZoom": 1.0,
       "focusZoom": 2.0,
       "delayMs": 1000,
@@ -49,28 +49,54 @@
   "scenes": [
     {
       "id": "01-build-strategy",
-      "description": "FOCUS BUILD (2 steps): add Candles, then add EMA(20) and set its length. Camera is auto-generated with lockX (no horizontal movement): full view -> on search typing, after 1s delay zoom in to read the menu -> on result click, zoom out to full view. Same for the EMA length input.",
+      "description": "FULL BUILD (5 nodes): Candles -> EMA20 (len 20) -> EMA50 (len 50) -> Plot EMA20 (color) -> Plot EMA50 (color). Camera is auto-generated: it GLIDES horizontally to each hotspot, zooms in (1s) to frame the menu/field/dialog, holds pixel-locked while typing/choosing, then snaps out (450ms) once the node lands in the flow. Value inputs and color pickers follow the same zoom-in / hold / pull-out feel.",
       "target": { "selector": ".react-flow", "aspect": "9:16", "anchor": "center" },
       "setup": [
         { "at": 0.0, "type": "press", "key": "Digit2", "shift": true },
         { "at": 0.5, "type": "injectFlow", "file": "flows/ema-plot.json" },
         { "at": 1.8, "type": "injectFlow", "file": "flows/ema-plot.json", "nodeCount": 0 }
       ],
-      "durationSec": 19.5,
+      "durationSec": 52.0,
       "holdAfterSec": 1.0,
       "autoCamera": true,
       "tracks": {
         "input": [
-          { "at": 0.5,  "type": "rightClick", "selector": ".react-flow__pane", "position": {"x": 820, "y": 250} },
+          { "at": 0.5,  "type": "rightClick", "selector": ".react-flow__pane", "position": {"x": 507, "y": 323} },
           { "at": 1.6,  "type": "fill",  "selector": "input[placeholder=\"Search nodes...\"]", "text": "ohlcv", "focusZoom": 2.0 },
           { "at": 4.3,  "type": "click", "selector": "[role=\"menuitem\"]:has-text(\"Candles\")" },
           { "at": 5.4,  "type": "injectFlow", "file": "flows/ema-plot.json", "nodeCount": 1 },
 
-          { "at": 7.0,  "type": "rightClick", "selector": ".react-flow__pane", "position": {"x": 820, "y": 650} },
+          { "at": 7.0,  "type": "rightClick", "selector": ".react-flow__pane", "position": {"x": 933, "y": 157} },
           { "at": 8.1,  "type": "fill",  "selector": "input[placeholder=\"Search nodes...\"]", "text": "ta.ema", "focusZoom": 2.0 },
           { "at": 10.8, "type": "click", "selector": "[role=\"menuitem\"]" },
           { "at": 11.9, "type": "injectFlow", "file": "flows/ema-plot.json", "nodeCount": 2 },
-          { "at": 13.5, "type": "fill",  "selector": ".react-flow__node[data-id=\"2\"] input[placeholder=\"int\"]", "text": "20", "focusZoom": 2.4 }
+          { "at": 13.5, "type": "fill",  "selector": ".react-flow__node[data-id=\"2\"] input[placeholder=\"int\"]", "text": "20", "focusZoom": 2.4 },
+
+          { "at": 18.0, "type": "rightClick", "selector": ".react-flow__pane", "position": {"x": 933, "y": 661} },
+          { "at": 19.1, "type": "fill",  "selector": "input[placeholder=\"Search nodes...\"]", "text": "ta.ema", "focusZoom": 2.0 },
+          { "at": 21.8, "type": "click", "selector": "[role=\"menuitem\"]" },
+          { "at": 22.9, "type": "injectFlow", "file": "flows/ema-plot.json", "nodeCount": 3 },
+          { "at": 24.5, "type": "fill",  "selector": ".react-flow__node[data-id=\"3\"] input[placeholder=\"int\"]", "text": "50", "focusZoom": 2.4 },
+
+          { "at": 29.0, "type": "rightClick", "selector": ".react-flow__pane", "position": {"x": 1388, "y": 310} },
+          { "at": 30.1, "type": "fill",  "selector": "input[placeholder=\"Search nodes...\"]", "text": "plot", "focusZoom": 2.0 },
+          { "at": 32.8, "type": "click", "selector": "[role=\"menuitem\"]:has(:text-is(\"Plot\"))" },
+          { "at": 33.9, "type": "injectFlow", "file": "flows/ema-plot.json", "nodeCount": 4 },
+          { "at": 35.5, "type": "click", "selector": ".react-flow__node[data-id=\"4\"] .aspect-square", "focusZoom": 2.0, "focusSelector": "[role=\"dialog\"]" },
+          { "at": 39.0, "type": "click", "selector": "[role=\"dialog\"] button[title=\"#eab308\"]" },
+
+          { "at": 41.0, "type": "rightClick", "selector": ".react-flow__pane", "position": {"x": 1388, "y": 550} },
+          { "at": 42.1, "type": "fill",  "selector": "input[placeholder=\"Search nodes...\"]", "text": "plot", "focusZoom": 2.0 },
+          { "at": 44.8, "type": "click", "selector": "[role=\"menuitem\"]:has(:text-is(\"Plot\"))" },
+          { "at": 45.9, "type": "injectFlow", "file": "flows/ema-plot.json", "nodeCount": 5 },
+          { "at": 47.5, "type": "click", "selector": ".react-flow__node[data-id=\"5\"] .aspect-square", "focusZoom": 2.0, "focusSelector": "[role=\"dialog\"]" },
+          { "at": 51.0, "type": "click", "selector": "[role=\"dialog\"] button[title=\"#06b6d4\"]" }
+        ],
+        "attention": [
+          { "at": 13.1, "type": "mark", "selector": ".react-flow__node[data-id=\"2\"] input[placeholder=\"int\"]", "durationMs": 2600 },
+          { "at": 24.1, "type": "mark", "selector": ".react-flow__node[data-id=\"3\"] input[placeholder=\"int\"]", "durationMs": 2600 },
+          { "at": 37.9, "type": "mark", "selector": "[role=\"dialog\"] button[title=\"#eab308\"]", "padding": 4, "durationMs": 1200 },
+          { "at": 49.9, "type": "mark", "selector": "[role=\"dialog\"] button[title=\"#06b6d4\"]", "padding": 4, "durationMs": 1200 }
         ]
       }
     },

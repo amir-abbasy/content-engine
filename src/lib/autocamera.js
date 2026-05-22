@@ -27,7 +27,19 @@ const round = (x) => Number(x.toFixed(3));
 const CURSOR = ['click', 'rightClick', 'dblclick', 'hover', 'fill'];
 const isSearchFill = (e) => e.type === 'fill' && /Search nodes/i.test(e.selector || '');
 
+// The node a selector acts on, e.g. `.react-flow__node[data-id="2"] input…`
+// -> `.react-flow__node[data-id="2"]`. Falls back to the pane (full view) when
+// the selector isn't node-scoped.
+function nodeSelOf(selector) {
+  const m = /\.react-flow__node\[data-id="(\d+)"\]/.exec(selector || '');
+  return m ? `.react-flow__node[data-id="${m[1]}"]` : '.react-flow__pane';
+}
+
 function anchorOf(e) {
+  // `focusSelector` lets a hotspot frame a DIFFERENT element than the one it
+  // acts on — e.g. click a node to open its colour popover, but frame the
+  // [role="dialog"], not the node.
+  if (e.focusSelector) return { selector: e.focusSelector };
   return e.point
     ? { point: e.point }
     : { selector: e.selector, ...(e.position ? { position: e.position } : {}) };
@@ -51,10 +63,13 @@ export function buildAutoCamera(inputEvents, cfg = {}) {
   // Opening rest keyframe: full view, no anchor (pinned to scene start).
   const kfs = [{ at: 0, ...anchorOf(firstCursor), zoom: restZoom, ease: 'cubic-out', tAnchor: null }];
 
-  for (const h of hotspots) {
+  hotspots.forEach((h, hi) => {
     const z = h.focusZoom ?? baseFocus;
+    // All zoomed keyframes for this hotspot share one resolved position so the
+    // camera is pixel-LOCKED through the whole close-up — record.js resolves the
+    // point once per group and reuses it (no drift while typing/choosing).
+    const fg = `hs${hi}`;
     const inA = anchorOf(h);          // zoom target (search box / input field)
-    const pane = { selector: '.react-flow__pane' }; // full-view anchor for pull-out
 
     let inRef;        // input event the zoom-IN is timed from
     let inStartOff;   // ms after that event when the zoom-IN begins
@@ -62,33 +77,58 @@ export function buildAutoCamera(inputEvents, cfg = {}) {
     let outStartOff;  // ms after that event when the zoom-OUT begins
     let planInStart;  // approximate plan time (only used to schedule live position resolution)
     let planOutStart;
+    // Where the camera RESTS after this hotspot. The pull-out should CENTRE on
+    // the node that was just added/edited (so it's visible) — NOT the pane
+    // centre, which only ever shows the middle slice and hides edge nodes.
+    let restSel = nodeSelOf(h.selector);
 
     if (isSearchFill(h)) {
       const rc = [...sorted].reverse().find((e) => (e.at || 0) <= (h.at || 0) && e.type === 'rightClick');
       const result = sorted.find((e) => (e.at || 0) > (h.at || 0) && (e.type === 'click' || e.type === 'dblclick') && (e.selector || e.point));
+      // The picked node lands in the flow at the injectFlow right AFTER the
+      // result click — that's the cue to pull out (not the click itself, so the
+      // viewer first sees the result clicked + the node appear at full zoom).
+      const added = result ? sorted.find((e) => (e.at || 0) > (result.at || 0) && e.type === 'injectFlow') : null;
+      const outAnchor = added ?? result;
       // Zoom IN: delay after the right-click that opened the menu.
       inRef = idxOf(rc ?? h);
       inStartOff = delayMs;
-      // Zoom OUT: the moment the result is clicked (offset 0). No result → fall
-      // back to a held timeout from the zoom-in.
-      outRef = result ? idxOf(result) : inRef;
-      outStartOff = result ? 0 : delayMs + zoomMs + holdMs;
+      // Zoom OUT: the moment the node is added (offset 0). No anchor → fall back
+      // to a held timeout from the zoom-in.
+      outRef = outAnchor ? idxOf(outAnchor) : inRef;
+      outStartOff = outAnchor ? 0 : delayMs + zoomMs + holdMs;
       planInStart = (rc ? rc.at || 0 : h.at || 0) + delayMs / 1000;
-      planOutStart = result ? (result.at || 0) : planInStart + (zoomMs + holdMs) / 1000;
+      planOutStart = outAnchor ? (outAnchor.at || 0) : planInStart + (zoomMs + holdMs) / 1000;
+      // Rest on the freshly-added node (its id == the injectFlow's nodeCount).
+      if (added && added.nodeCount != null) restSel = `.react-flow__node[data-id="${added.nodeCount}"]`;
     } else {
-      // Plain input field: zoom in after it starts, hold, zoom out.
+      // Plain hotspot (value input OR a click that opens a dialog). Zoom in
+      // after it starts. If it opens something the user then COMMITS in — a
+      // colour swatch inside a [role="dialog"], before the next hotspot — hold
+      // until that commit, then pull out. Otherwise hold a fixed beat.
       inRef = idxOf(h);
       inStartOff = delayMs;
-      outRef = idxOf(h);
-      outStartOff = delayMs + zoomMs + holdMs;
       planInStart = (h.at || 0) + delayMs / 1000;
-      planOutStart = planInStart + (zoomMs + holdMs) / 1000;
+      const nextHs = hotspots[hi + 1];
+      const scopeEnd = nextHs ? (nextHs.at || 0) : Infinity;
+      const commit = sorted.find((e) =>
+        (e.at || 0) > (h.at || 0) && (e.at || 0) < scopeEnd
+        && e.type === 'click' && /dialog/i.test(e.selector || ''));
+      if (commit) {
+        outRef = idxOf(commit);
+        outStartOff = 0;
+        planOutStart = commit.at || 0;
+      } else {
+        outRef = idxOf(h);
+        outStartOff = delayMs + zoomMs + holdMs;
+        planOutStart = planInStart + (zoomMs + holdMs) / 1000;
+      }
     }
 
-    kfs.push({ at: round(planInStart),                       ...inA,  zoom: restZoom, ease,             tAnchor: { ref: inRef,  offsetMs: inStartOff } });             // about to zoom
-    kfs.push({ at: round(planInStart + zoomMs / 1000),       ...inA,  zoom: z,        ease,             tAnchor: { ref: inRef,  offsetMs: inStartOff + zoomMs } });    // ZOOM IN
-    kfs.push({ at: round(planOutStart),                      ...inA,  zoom: z,        ease: 'linear',   tAnchor: { ref: outRef, offsetMs: outStartOff } });            // HOLD until result click
-    kfs.push({ at: round(planOutStart + zoomOutMs / 1000),   ...pane, zoom: restZoom, ease,             tAnchor: { ref: outRef, offsetMs: outStartOff + zoomOutMs } }); // ZOOM OUT to full view
-  }
+    kfs.push({ at: round(planInStart),                     ...inA,  zoom: restZoom, ease,           focusGroup: fg, seg: hi, tAnchor: { ref: inRef,  offsetMs: inStartOff } });             // about to zoom
+    kfs.push({ at: round(planInStart + zoomMs / 1000),     ...inA,  zoom: z,        ease,           focusGroup: fg, seg: hi, tAnchor: { ref: inRef,  offsetMs: inStartOff + zoomMs } });    // ZOOM IN
+    kfs.push({ at: round(planOutStart),                    ...inA,  zoom: z,        ease: 'linear', focusGroup: fg, seg: hi, tAnchor: { ref: outRef, offsetMs: outStartOff } });            // HOLD — locked still
+    kfs.push({ at: round(planOutStart + zoomOutMs / 1000), selector: restSel, zoom: restZoom, ease,               seg: hi, tAnchor: { ref: outRef, offsetMs: outStartOff + zoomOutMs } }); // ZOOM OUT, centred on the node
+  });
   return kfs;
 }

@@ -230,6 +230,7 @@
         "cameraFollowEase": { "$ref": "#/definitions/ease" },
         "cameraFollowZoom": { "type": "number", "minimum": 1, "maximum": 3, "description": "Optional zoom factor for the cameraFollow keyframe. If omitted, the keyframe carries no zoom (defaults to 1.0)." },
         "focusZoom":        { "type": "number", "minimum": 1, "maximum": 3, "description": "Auto-camera hint: zoom factor when this action becomes a focus moment. Overrides record.autoZoom.zoom for this one event (e.g. push tighter on a small input)." },
+        "focusSelector":    { "type": "string", "description": "Auto-camera hint: frame THIS element instead of the one acted on (e.g. click a node to open its colour popover but frame the [role=\"dialog\"]). Used with focusZoom." },
         "noFocus":          { "type": "boolean", "description": "Auto-camera hint: exclude this event from triggering a zoom (e.g. a node reveal you don't want to punch in on)." }
       }
     },

@@ -123,9 +123,17 @@ async function recordSession(pipeline, { headless, rawDir }) {
 
       // Custom dispatcher: camera events emit pan keyframes; reveal/attention
       // are reserved track types (forward-compatible, runtime not yet built).
+      const focusCache = new Map(); // focusGroup -> resolved point, so the
+      // close-up stays pixel-locked (one position for the whole zoomed phase).
       const dispatch = async (ev) => {
         if (ev._track === 'camera') {
-          const pt = await resolveCameraPoint(page, ev);
+          let pt;
+          if (ev.focusGroup && focusCache.has(ev.focusGroup)) {
+            pt = focusCache.get(ev.focusGroup);
+          } else {
+            pt = await resolveCameraPoint(page, ev);
+            if (ev.focusGroup && pt) focusCache.set(ev.focusGroup, pt);
+          }
           if (!pt) {
             log.warn(`  camera kf @${(ev.at || 0).toFixed(2)}s skipped: no target`);
             return;
@@ -139,6 +147,7 @@ async function recordSession(pipeline, { headless, rawDir }) {
           focusKeyframes.push({
             _tAnchor: ev.tAnchor || null,
             _planAt: ev.at || 0,
+            _seg: ev.seg, // hotspot id — keeps each zoom segment atomic
             cx: pt.cx,
             cy: pt.cy,
             zoom: ev.zoom,
@@ -193,19 +202,47 @@ async function recordSession(pipeline, { headless, rawDir }) {
 
       // Resolve deferred camera-keyframe times from actual input fire times.
       // tMs = (when the anchor event really fired) + (exact designed offset),
-      // falling back to the plan if the anchor never fired. Then sort + clamp
-      // monotonic so a freak ordering can't make a segment run backwards.
+      // falling back to the plan if the anchor never fired.
       for (const kf of focusKeyframes) {
         if (!('_tAnchor' in kf)) continue; // cameraFollow keyframe — tMs already set
         const a = kf._tAnchor;
         const fired = a && typeof a.ref === 'number' ? inputFireAbsMs[a.ref] : undefined;
         kf.tMs = fired != null ? fired + (a.offsetMs || 0) : startMs + (kf._planAt || 0) * 1000;
       }
+
+      // Keep each hotspot's zoom segment ATOMIC. Under drift / back-to-back
+      // execution a segment's pull-out can land after the NEXT segment's
+      // zoom-in, so a naive sort interleaves them and the camera shakes between
+      // two targets. Group by `_seg`, order segments, and clamp each pull-out to
+      // finish before the next segment begins (preserving the zoom-out duration
+      // where possible, compressing only if forced).
+      const segMap = new Map();
+      for (const kf of focusKeyframes) {
+        if (kf._seg == null) continue;
+        if (!segMap.has(kf._seg)) segMap.set(kf._seg, []);
+        segMap.get(kf._seg).push(kf);
+      }
+      const segs = [...segMap.values()].map((a) => a.sort((p, q) => p.tMs - q.tMs));
+      segs.sort((a, b) => a[0].tMs - b[0].tMs);
+      for (let i = 0; i < segs.length - 1; i++) {
+        const cur = segs[i];
+        const nextStart = segs[i + 1][0].tMs;
+        const outEnd = cur[cur.length - 1];   // pull-out → rest
+        const outStart = cur[cur.length - 2]; // hold → start of pull-out
+        const inEnd = cur[cur.length - 3];    // focus reached
+        if (outEnd && outStart && inEnd && outEnd.tMs > nextStart) {
+          const outDur = outEnd.tMs - outStart.tMs;
+          outEnd.tMs = nextStart;
+          outStart.tMs = Math.max(inEnd.tMs, outEnd.tMs - outDur);
+        }
+      }
+
+      // Final order + monotonic safety net.
       focusKeyframes.sort((p, q) => p.tMs - q.tMs);
       for (let i = 1; i < focusKeyframes.length; i++) {
         if (focusKeyframes[i].tMs < focusKeyframes[i - 1].tMs) focusKeyframes[i].tMs = focusKeyframes[i - 1].tMs;
       }
-      for (const kf of focusKeyframes) { delete kf._tAnchor; delete kf._planAt; }
+      for (const kf of focusKeyframes) { delete kf._tAnchor; delete kf._planAt; delete kf._seg; }
 
       // Hold until durationSec fully elapses (events may have finished earlier).
       const durationMs = (scene.durationSec || 0) * 1000;

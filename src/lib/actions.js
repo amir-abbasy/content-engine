@@ -30,12 +30,18 @@ function keyCombo(ev) {
 
 const CURSOR_BEARING = new Set(['click', 'rightClick', 'dblclick', 'hover', 'fill']);
 
+// Selector-resolution timeout for input actions. A missing/misnamed selector
+// must fail fast — at Playwright's 30s default a single bad click would balloon
+// the recording by half a minute (and the video clip with it). Override per
+// event with `timeoutMs` when an element legitimately needs longer to appear.
+const ACTION_TIMEOUT_MS = 6000;
+
 // Resolve the absolute viewport coords for a selector + optional position.
 async function resolveTargetPoint(page, ev) {
   if (!ev.selector) throw new Error(`"${ev.type}" needs a "selector"`);
   const base = page.locator(ev.selector);
   const loc = ev.nth !== undefined ? base.nth(ev.nth) : base.first();
-  const box = await loc.boundingBox();
+  const box = await loc.boundingBox({ timeout: ev.timeoutMs ?? ACTION_TIMEOUT_MS });
   if (!box) throw new Error(`"${ev.selector}" has no bounding box`);
   const pos = ev.position || { x: box.width / 2, y: box.height / 2 };
   return { x: box.x + pos.x, y: box.y + pos.y };
@@ -76,7 +82,7 @@ export async function runEvent(ev, ctx) {
       await ctx.cursor.hesitate();
       await ctx.page.mouse.click(pt.x, pt.y);
       const loc = ctx.page.locator(ev.selector).first();
-      await loc.fill('');
+      await loc.fill('', { timeout: ev.timeoutMs ?? ACTION_TIMEOUT_MS });
       const text = ev.text ?? '';
       const keyDelay = ev.delay; // optional override
       for (const ch of text) {

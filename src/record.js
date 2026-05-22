@@ -18,6 +18,7 @@ import { loadPipeline } from './lib/pipeline.js';
 import { launchRecorder, waitForPyodide } from './lib/browser.js';
 import { runEvent } from './lib/actions.js';
 import { runEvents } from './lib/timeline.js';
+import { buildAutoCamera } from './lib/autocamera.js';
 import { createRng } from './lib/humanize.js';
 import { createCursorDriver } from './lib/cursor-driver.js';
 import { resolveTarget } from './lib/target.js';
@@ -30,18 +31,21 @@ function timestamp() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
 }
 
+// Camera/input point resolution must NEVER block the live timeline. A camera
+// keyframe often anchors on a transient element (a context menu, a popover, a
+// node) that may already be gone by the time a "hold" keyframe fires. With the
+// default 30s timeout, each such miss stalls the whole scheduler — turning a
+// 45s scene into minutes. Resolve with a short timeout: a miss returns null
+// fast and the camera simply holds its previous position.
+const CAMERA_RESOLVE_TIMEOUT_MS = 400;
+
 // Resolve a camera event's keyframe coords (point or selector + optional position).
-async function resolveCameraPoint(page, ev, viewport) {
+async function resolveCameraPoint(page, ev) {
   if (ev.point) return { cx: ev.point.x, cy: ev.point.y };
   if (!ev.selector) return null;
   const loc = page.locator(ev.selector).first();
-  const box = await loc.boundingBox().catch(() => null);
-  if (!box) {
-    // Fallback to target.js's smarter resolver (handles pane keys etc.)
-    const fb = await resolveTarget(page, { selector: ev.selector }, viewport).catch(() => null);
-    if (!fb) return null;
-    return { cx: fb.x + fb.width / 2, cy: fb.y + fb.height / 2 };
-  }
+  const box = await loc.boundingBox({ timeout: CAMERA_RESOLVE_TIMEOUT_MS }).catch(() => null);
+  if (!box) return null;
   const pos = ev.position || { x: box.width / 2, y: box.height / 2 };
   return { cx: box.x + pos.x, cy: box.y + pos.y };
 }
@@ -52,7 +56,7 @@ async function resolveCameraPoint(page, ev, viewport) {
 async function resolveInputPoint(page, ev) {
   if (!ev.selector) return null;
   const loc = page.locator(ev.selector).first();
-  const box = await loc.boundingBox().catch(() => null);
+  const box = await loc.boundingBox({ timeout: CAMERA_RESOLVE_TIMEOUT_MS }).catch(() => null);
   if (!box) return null;
   const pos = ev.position || { x: box.width / 2, y: box.height / 2 };
   return { cx: box.x + pos.x, cy: box.y + pos.y };
@@ -90,26 +94,54 @@ async function recordSession(pipeline, { headless, rawDir }) {
       // ── Scene clock starts here. Flatten all tracks; sort by `at`; dispatch.
       const focusKeyframes = [];
       const tracks = scene.tracks || {};
+
+      // Camera track: use the manual track, OR auto-generate one from the
+      // input actions (Screen Studio-style) when autoZoom is on. `autoCamera`
+      // on a scene forces/disables it explicitly.
+      let cameraEvents = tracks.camera || [];
+      const az = pipeline.record.autoZoom || {};
+      const wantAuto = scene.autoCamera === true
+        || (az.enabled && scene.autoCamera !== false && cameraEvents.length === 0);
+      if (wantAuto) {
+        cameraEvents = buildAutoCamera(tracks.input || [], az);
+        log.info(`  auto-camera: ${cameraEvents.length} keyframes from ${(tracks.input || []).length} input events`);
+      }
+
       const events = [];
-      for (const name of ['input', 'camera', 'reveal', 'attention']) {
+      const inputTrack = tracks.input || [];
+      for (let i = 0; i < inputTrack.length; i++) events.push({ ...inputTrack[i], _track: 'input', _idx: i });
+      for (const ev of cameraEvents) events.push({ ...ev, _track: 'camera' });
+      for (const name of ['reveal', 'attention']) {
         for (const ev of (tracks[name] || [])) events.push({ ...ev, _track: name });
       }
 
       const startMs = Date.now() - recordingStartedAt;
+      // Actual wall-clock fire time of each input event (recording-relative ms),
+      // captured as it fires. Auto-camera keyframes anchor their timing to these
+      // so durations stay exact while triggers track reality.
+      const inputFireAbsMs = new Array(inputTrack.length).fill(undefined);
 
       // Custom dispatcher: camera events emit pan keyframes; reveal/attention
       // are reserved track types (forward-compatible, runtime not yet built).
       const dispatch = async (ev) => {
         if (ev._track === 'camera') {
-          const pt = await resolveCameraPoint(page, ev, pipeline.app.viewport);
+          const pt = await resolveCameraPoint(page, ev);
           if (!pt) {
             log.warn(`  camera kf @${(ev.at || 0).toFixed(2)}s skipped: no target`);
             return;
           }
+          // Resolve the POSITION live (the element must exist now), but DEFER
+          // the time: it's computed after the run from the actual fire time of
+          // the anchoring input event + the keyframe's exact offset. Sampling
+          // Date.now() here would let serial-execution drift (slow typing,
+          // cursor travel) stretch/crush the designed zoom durations and let the
+          // pull-out fire before the result is really clicked.
           focusKeyframes.push({
-            tMs: Date.now() - recordingStartedAt,
+            _tAnchor: ev.tAnchor || null,
+            _planAt: ev.at || 0,
             cx: pt.cx,
             cy: pt.cy,
+            zoom: ev.zoom,
             ease: ev.ease || 'cubic-in-out',
           });
           return;
@@ -151,10 +183,29 @@ async function recordSession(pipeline, { headless, rawDir }) {
           }
         }
         await runEvent(ev, ctx);
+        // Stamp the actual fire time (after the action completes — e.g. the
+        // menu is open, the result is clicked) so the camera can anchor to it.
+        if (typeof ev._idx === 'number') inputFireAbsMs[ev._idx] = Date.now() - recordingStartedAt;
       };
 
       const sceneStartWall = Date.now();
       await runEvents(events, page, dispatch, { label: '  live' });
+
+      // Resolve deferred camera-keyframe times from actual input fire times.
+      // tMs = (when the anchor event really fired) + (exact designed offset),
+      // falling back to the plan if the anchor never fired. Then sort + clamp
+      // monotonic so a freak ordering can't make a segment run backwards.
+      for (const kf of focusKeyframes) {
+        if (!('_tAnchor' in kf)) continue; // cameraFollow keyframe — tMs already set
+        const a = kf._tAnchor;
+        const fired = a && typeof a.ref === 'number' ? inputFireAbsMs[a.ref] : undefined;
+        kf.tMs = fired != null ? fired + (a.offsetMs || 0) : startMs + (kf._planAt || 0) * 1000;
+      }
+      focusKeyframes.sort((p, q) => p.tMs - q.tMs);
+      for (let i = 1; i < focusKeyframes.length; i++) {
+        if (focusKeyframes[i].tMs < focusKeyframes[i - 1].tMs) focusKeyframes[i].tMs = focusKeyframes[i - 1].tMs;
+      }
+      for (const kf of focusKeyframes) { delete kf._tAnchor; delete kf._planAt; }
 
       // Hold until durationSec fully elapses (events may have finished earlier).
       const durationMs = (scene.durationSec || 0) * 1000;
@@ -228,11 +279,16 @@ async function main() {
     const startMs = Math.max(0, meta.startMs * scale + offset);
     const endMs = Math.min(rawDurationMs, meta.endMs * scale + offset);
     const clip = path.join(scenesDir, `${meta.id}.mp4`);
+    // `lockX` pins the camera horizontally to the capture region's centre, so
+    // the zoom only moves vertically + scales (no left/right panning).
+    const lockX = !!(pipeline.record.autoZoom && pipeline.record.autoZoom.lockX);
+    const centerX = meta.bbox.x + meta.bbox.width / 2;
     const pan = meta.focusKeyframes && meta.focusKeyframes.length
       ? meta.focusKeyframes.map((kf) => ({
           tSec: Math.max(0, ((kf.tMs - meta.startMs) * scale) / 1000),
-          cx: kf.cx,
+          cx: lockX ? centerX : kf.cx,
           cy: kf.cy,
+          zoom: kf.zoom,
           ease: kf.ease || 'linear',
         }))
       : undefined;

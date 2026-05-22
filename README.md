@@ -194,27 +194,59 @@ with `nth`).
 `cameraFollow: true` on an input event auto-emits a camera keyframe at the
 event's target the moment it fires.
 
-### Camera track — pan keyframes with ease
+### Camera track — pan + zoom keyframes with ease
 
 Each keyframe has `at`, `point: {x, y}` *or* `selector` (+ optional
-`position`), and `ease` (the curve used to arrive at this keyframe from the
-previous one). Eases: `linear`, `quad-in`/`out`/`in-out`, `cubic-in`/`out`/
-`in-out`.
+`position`), optional `zoom` (1.0 = full bbox, >1.0 = cinematic push-in), and
+`ease` (the curve used to arrive at this keyframe from the previous one).
+Eases: `linear`, `quad-in`/`out`/`in-out`, `cubic-in`/`out`/`in-out`.
 
 ```jsonc
 "camera": [
-  { "at":  0.0, "point": {"x": 503, "y": 290}, "ease": "cubic-out" },
-  { "at":  4.8, "point": {"x": 503, "y": 290}, "ease": "linear" },        // hold
-  { "at":  5.7, "selector": ".react-flow__node[data-id=\"1\"]", "ease": "cubic-in-out" },
-  { "at":  6.4, "selector": ".react-flow__node[data-id=\"1\"]", "ease": "linear" },
-  { "at":  7.3, "point": {"x": 896, "y": 200}, "ease": "cubic-in-out" }   // pull-back
+  { "at":  0.0, "point": {"x": 503, "y": 290}, "zoom": 1.0,  "ease": "cubic-out" },
+  { "at":  4.8, "point": {"x": 503, "y": 290}, "zoom": 1.6,  "ease": "cubic-in-out" }, // push-in
+  { "at":  5.7, "selector": ".react-flow__node[data-id=\"1\"]", "zoom": 1.85, "ease": "cubic-in-out" },
+  { "at":  7.3, "point": {"x": 896, "y": 200}, "zoom": 1.2,  "ease": "cubic-in-out" }  // pull-back
 ]
 ```
 
 Selector keyframes resolve at firing time (so dynamic positions work). Two
-consecutive keyframes with the same value = hold. The ease is baked into the
-ffmpeg pan expression at crop time, so the camera moves smoothly between
-keyframes in the final clip.
+consecutive keyframes with the same value = hold. Both pan and `zoom` are eased
+and baked into the ffmpeg crop: the crop window shrinks (`bbox / zoom`) and the
+`zoompan` filter scales it back to the output resolution = a real zoom-in.
+
+### Automatic zoom (Screen Studio-style)
+
+Authoring camera keyframes by hand is tedious. Set `record.autoZoom.enabled`
+and the engine **derives the whole camera track from your input actions** — no
+`camera` track needed. Every cursor action (`click`/`rightClick`/`fill`/…) and
+every node reveal (`injectFlow`) becomes a *focus moment*: the camera arrives
+on that element just before it happens, zooms in, holds, then eases to the next
+moment — dipping to a wide shot when two moments are far apart (idle / scene
+change).
+
+```jsonc
+"record": {
+  "autoZoom": {
+    "enabled": true,
+    "zoom": 1.85,          // zoom on each cursor action
+    "revealZoom": 1.5,     // zoom when framing a freshly-injected node
+    "wideZoom": 1.2,       // resting / establishing / idle-dip zoom
+    "leadMs": 450,         // arrive on target this long BEFORE the action
+    "holdMs": 450,         // linger this long AFTER it
+    "clusterGapMs": 1700,  // gap larger than this ⇒ dip to wideZoom between
+    "ease": "cubic-in-out"
+  }
+}
+```
+
+- A scene uses auto-camera when `autoZoom.enabled` and it has no manual `camera`
+  track. Force it per-scene with `"autoCamera": true`, or opt out with `false`.
+- Add `"focusZoom": 2.2` to any input event to override the base zoom for that
+  one action (push tighter on a small input, wider on a menu). Element-anchored,
+  so it locks onto the live element with no cursor jitter.
+- The manual `camera` track and auto-camera are mutually exclusive per scene —
+  use the manual track for deliberate non-action moves (e.g. a slow chart pan).
 
 ### Attention track — direct the viewer's eye
 

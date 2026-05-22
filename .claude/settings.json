@@ -33,7 +33,17 @@
       "Bash(node scripts/debug-plot-color2.js)",
       "Bash(python -c \"import json,sys; m=json.load\\(sys.stdin\\); s=m['scenes'][0]; print\\(f'startMs={s[\\\\\"startMs\\\\\"]:.0f}  endMs={s[\\\\\"endMs\\\\\"]:.0f}  dur={\\(s[\\\\\"endMs\\\\\"]-s[\\\\\"startMs\\\\\"]\\)/1000:.1f}s'\\); print\\('keyframes:'\\); [print\\(f'  tMs={k[\\\\\"tMs\\\\\"]:6d}  cx={k[\\\\\"cx\\\\\"]:7.1f}  cy={k[\\\\\"cy\\\\\"]:6.1f}  ease={k[\\\\\"ease\\\\\"]}'\\) for k in s['focusKeyframes']]\")",
       "Bash(python -c \"import json,sys; m=json.load\\(sys.stdin\\); s=m['scenes'][0]; print\\(f'startMs={s[\\\\\"startMs\\\\\"]:.0f}'\\); print\\('keyframes:'\\); [print\\(f'  scene_t={\\(k[\\\\\"tMs\\\\\"]-s[\\\\\"startMs\\\\\"]\\)/1000:5.2f}  cx={k[\\\\\"cx\\\\\"]:7.1f}  cy={k[\\\\\"cy\\\\\"]:6.1f}'\\) for k in s['focusKeyframes']]\")",
-      "Bash(dir \"output\\\\algo-trading-reel-01-2026-05-18_19-36-13\\\\\" 2>&1)"
+      "Bash(dir \"output\\\\algo-trading-reel-01-2026-05-18_19-36-13\\\\\" 2>&1)",
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('pipeline.json','utf8'\\)\\); console.log\\('valid JSON'\\)\")",
+      "Bash(node --input-type=module -e ' *)",
+      "Bash(node --input-type=module -e \"import './src/lib/crop.js'; import './src/lib/autocamera.js'; console.log\\('crop.js + autocamera.js load OK'\\);\")",
+      "Bash(node -e \"let d=JSON.parse\\(require\\('fs'\\).readFileSync\\(0\\)\\); console.log\\('rawDurationSec:', d.rawDurationSec\\); for\\(const s of d.scenes\\) console.log\\(s.id, '| status:', s.status, '| startMs:', Math.round\\(s.startMs\\), '| endMs:', Math.round\\(s.endMs\\), s.error?\\('| ERR: '+s.error.slice\\(0,120\\)\\):''\\)\")",
+      "Bash(node -e \"let d=JSON.parse\\(require\\('fs'\\).readFileSync\\('output/algo-trading-reel-01-2026-05-21_13-56-19/manifest.json'\\)\\); let s=d.scenes[0]; console.log\\('count:', \\(s.focusKeyframes||[]\\).length\\); for\\(const k of \\(s.focusKeyframes||[]\\).slice\\(0,6\\)\\) console.log\\(' ', JSON.stringify\\(k\\)\\)\")",
+      "Bash(node -e \"let d=JSON.parse\\(require\\('fs'\\).readFileSync\\('output/algo-trading-reel-01-2026-05-21_18-17-20/manifest.json'\\)\\); let s=d.scenes[0]; let k=s.focusKeyframes||[]; console.log\\('count:', k.length\\); let prev=0; for\\(let i=0;i<k.length;i++\\){let gap=Math.round\\(k[i].tMs-prev\\); prev=k[i].tMs; console.log\\('  tMs:', Math.round\\(k[i].tMs\\), '| gap:', gap, '| zoom:', k[i].zoom, '|', \\(k[i].sel||k[i].selector||'pt'\\).slice?.\\(0,40\\)||'pt'\\)}\")",
+      "Bash(node --check src/record.js)",
+      "Bash(cd \"output/algo-trading-reel-01-2026-05-21_18-51-29\")",
+      "Bash(node -e \"let d=JSON.parse\\(require\\('fs'\\).readFileSync\\('manifest.json'\\)\\); let s=d.scenes[0]; console.log\\('status:',s.status,'| startMs:',Math.round\\(s.startMs\\),'| endMs:',Math.round\\(s.endMs\\),'| raw:',d.rawDurationSec\\); if\\(s.error\\)console.log\\('ERR:',s.error.slice\\(0,200\\)\\)\")",
+      "Bash(node -e ' *)"
     ]
   }
 }

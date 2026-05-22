@@ -58,6 +58,23 @@
             }
           }
         },
+        "autoZoom": {
+          "type": "object",
+          "description": "Screen Studio-style automatic zoom with a 'delayed punch-in, fast pull-out' feel. The camera RESTS at full view and only zooms on HOTSPOTS: node reveals (injectFlow), input fills, and color picks (input events carrying `focusZoom`). For each hotspot (or cluster of nearby hotspots) it holds full view, waits `delayMs`, zooms IN over `zoomMs`, holds `holdMs`, then zooms OUT over `zoomMs`. Runs when enabled and a scene has no manual camera track (or scene.autoCamera=true).",
+          "additionalProperties": false,
+          "properties": {
+            "enabled":    { "type": "boolean", "default": false, "description": "Master switch for auto-camera generation." },
+            "restZoom":   { "type": "number", "default": 1.0, "description": "Resting / full-view zoom between hotspots (1.0 = full bbox)." },
+            "revealZoom": { "type": "number", "default": 1.8, "description": "Zoom factor when punching in on a freshly-injected node (the 'search node' result)." },
+            "focusZoom":  { "type": "number", "default": 2.0, "description": "Default punch-in zoom for hotspot input events that don't set their own `focusZoom`." },
+            "delayMs":    { "type": "integer", "default": 1000, "description": "Hold full view this long after a hotspot fires before zooming in." },
+            "zoomMs":     { "type": "integer", "default": 1000, "description": "Duration of the zoom-IN transition." },
+            "zoomOutMs":  { "type": "integer", "default": 1000, "description": "Duration of the zoom-OUT transition (defaults to zoomMs). Set lower for a snappy reset." },
+            "holdMs":     { "type": "integer", "default": 600, "description": "Hold at full zoom before pulling back out." },
+            "mergeGapMs": { "type": "integer", "default": 2500, "description": "Hotspots closer than this merge into one zoom session (punch in once, hold across all, pull out after the last)." },
+            "ease":       { "$ref": "#/definitions/ease" }
+          }
+        },
         "cursor": {
           "type": "object",
           "description": "Cursor personality — bezier travel with overshoot and hover hesitation, all driven by these parameters.",
@@ -110,6 +127,7 @@
         "target":      { "$ref": "#/definitions/target", "description": "Which part of the desktop canvas this scene captures." },
         "settleMs":    { "type": "integer", "description": "Override record.settleMs for this scene." },
         "fitMode":     { "type": "string", "enum": ["cover", "contain"], "description": "Override output.fitMode for this scene." },
+        "autoCamera":  { "type": "boolean", "description": "Force (true) or disable (false) auto-camera generation for this scene. If omitted, auto-camera runs when record.autoZoom.enabled and there's no manual camera track." },
         "durationSec":   { "type": "number", "description": "Scene clip length in seconds. The scheduler holds the recording until this elapses, even if all events finished sooner." },
         "holdAfterSec":  { "type": "number", "description": "Optional static hold AFTER `durationSec`, letting the final state breathe before the next scene." },
         "setup": {
@@ -209,7 +227,10 @@
         "script":  { "type": "string" },
         "timeoutMs": { "type": "integer" },
         "cameraFollow":     { "type": "boolean", "description": "If true, drop a camera keyframe at this event's target the moment it fires — convenience for 'camera follows the cursor'." },
-        "cameraFollowEase": { "$ref": "#/definitions/ease" }
+        "cameraFollowEase": { "$ref": "#/definitions/ease" },
+        "cameraFollowZoom": { "type": "number", "minimum": 1, "maximum": 3, "description": "Optional zoom factor for the cameraFollow keyframe. If omitted, the keyframe carries no zoom (defaults to 1.0)." },
+        "focusZoom":        { "type": "number", "minimum": 1, "maximum": 3, "description": "Auto-camera hint: zoom factor when this action becomes a focus moment. Overrides record.autoZoom.zoom for this one event (e.g. push tighter on a small input)." },
+        "noFocus":          { "type": "boolean", "description": "Auto-camera hint: exclude this event from triggering a zoom (e.g. a node reveal you don't want to punch in on)." }
       }
     },
 

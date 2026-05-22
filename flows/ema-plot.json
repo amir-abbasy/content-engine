@@ -3,7 +3,7 @@
   "nodes": [
     {
       "id": "1",
-      "position": { "x": 0, "y": 0 },
+      "position": { "x": 150, "y": 0 },
       "data": {
         "nodeKey": "ohlcv.data",
         "id": "1",
@@ -31,7 +31,7 @@
     },
     {
       "id": "2",
-      "position": { "x": 350, "y": 0 },
+      "position": { "x": 450, "y": 0 },
       "data": {
         "nodeKey": "ta.ema",
         "id": "2",

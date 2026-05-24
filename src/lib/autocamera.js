@@ -1,48 +1,52 @@
-// Auto-camera — search-menu zoom model.
+// Auto-camera — ONE zoom SESSION per node.
 //
-// The camera RESTS at full view. Two kinds of hotspot pull it in (input events
-// flagged with `focusZoom`):
+// The camera RESTS at full view and pulls in on HOTSPOTS (input events flagged
+// with `focusZoom`). Hotspots that share a `focusSession` (set by the generator
+// to a node id) are ONE session: the camera zooms in ONCE, GLIDES between the
+// inputs that session touches (search box → each field → colour), holds while
+// each is edited, then zooms out ONCE — instead of a jarring zoom-in/out per
+// field. A node with several inputs (e.g. MACD fast/slow/signal) therefore gets
+// a single, smooth close-up that travels across its inputs.
 //
-//   SEARCH  (fill on the "Search nodes…" box): the zoom is tied to the whole
-//           right-click → search → pick gesture.
-//             • zoom IN starts `delayMs` after the RIGHT-CLICK that opened the
-//               menu (i.e. once the search box is focused),
-//             • the camera HOLDS zoomed while the user types + reads results,
-//             • zoom OUT happens ONLY when the result is clicked.
-//
-//   INPUT   (fill/click on a node's field): zoom IN `delayMs` after it starts,
-//           hold `holdMs`, zoom OUT.
+//   SEARCH  (first item, fill on the "Search nodes…" box): zoom IN starts
+//           `delayMs` after the right-click that opened the menu.
+//   FIELDS  (later items, a node's value/colour edits): the camera glides to
+//           each as it's edited, staying zoomed.
+//   OUT     after the LAST item's edit. A lone search hotspot (node with no
+//           settings) zooms out on the result click; a drag frames both ends.
 //
 // TIMING IS ANCHORED TO REAL EVENTS, NOT THE PLAN. Each keyframe carries a
-// `tAnchor: { ref, offsetMs }` — `ref` is the index of the input event that
-// triggers the segment and `offsetMs` is the exact delay from when that event
-// actually fires. record.js fills in the wall-clock time post-run. This keeps
-// the designed zoom-in/out durations exact while pinning the zoom-out to the
-// actual result-click (slow typing/cursor travel can't make us pull out early).
-//
-// No horizontal movement — see record.js `autoZoom.lockX`, which pins the
-// crop's X to the capture-region centre. Keyframes are element-anchored.
+// `tAnchor: { ref, offsetMs }` — `ref` is the index of the input event it's
+// timed from, `offsetMs` the exact delay. record.js fills in the wall-clock time
+// post-run so designed durations stay exact while triggers track reality.
 
 const round = (x) => Number(x.toFixed(3));
 const CURSOR = ['click', 'rightClick', 'dblclick', 'hover', 'fill'];
 const isSearchFill = (e) => e.type === 'fill' && /Search nodes/i.test(e.selector || '');
 
 // The node a selector acts on, e.g. `.react-flow__node[data-id="2"] input…`
-// -> `.react-flow__node[data-id="2"]`. Falls back to the pane (full view) when
-// the selector isn't node-scoped.
+// -> `.react-flow__node[data-id="2"]`. Falls back to the pane (full view).
 function nodeSelOf(selector) {
   const m = /\.react-flow__node\[data-id="(\d+)"\]/.exec(selector || '');
   return m ? `.react-flow__node[data-id="${m[1]}"]` : '.react-flow__pane';
 }
 
+// The node a hotspot belongs to (its own selector, or its focusSelector's node).
+function nodeOf(e) {
+  const a = nodeSelOf(e.selector);
+  if (a !== '.react-flow__pane') return a;
+  const m = /\.react-flow__node\[data-id="(\d+)"\]/.exec(e.focusSelector || '');
+  return m ? `.react-flow__node[data-id="${m[1]}"]` : '.react-flow__pane';
+}
+
 function anchorOf(e) {
   // `focusSelector` lets a hotspot frame a DIFFERENT element than the one it
-  // acts on — e.g. click a node to open its colour popover, but frame the
-  // [role="dialog"], not the node.
+  // acts on (e.g. click a node's swatch but frame the colour [role="dialog"]).
+  // `nth` disambiguates repeated selectors (e.g. MACD's three int fields).
   if (e.focusSelector) return { selector: e.focusSelector };
   return e.point
     ? { point: e.point }
-    : { selector: e.selector, ...(e.position ? { position: e.position } : {}) };
+    : { selector: e.selector, ...(e.position ? { position: e.position } : {}), ...(e.nth !== undefined ? { nth: e.nth } : {}) };
 }
 
 export function buildAutoCamera(inputEvents, cfg = {}) {
@@ -51,9 +55,7 @@ export function buildAutoCamera(inputEvents, cfg = {}) {
   const zoomMs = cfg.zoomMs ?? 1000;
   const zoomOutMs = cfg.zoomOutMs ?? cfg.zoomMs ?? 1000;
   const holdMs = cfg.holdMs ?? 1000;
-  const panMs = cfg.panMs ?? 300; // fast inter-hotspot glide — the camera HOLDS
-  // on the current node, then snaps to the next over this short window (instead
-  // of drifting slowly across the whole gap).
+  const panMs = cfg.panMs ?? 300; // fast glide between hotspots/inputs
   const baseFocus = cfg.focusZoom ?? 2.0;
   const ease = cfg.ease || 'cubic-in-out';
 
@@ -62,82 +64,113 @@ export function buildAutoCamera(inputEvents, cfg = {}) {
   const hotspots = sorted.filter((e) => typeof e.focusZoom === 'number' && (e.selector || e.point));
   if (!hotspots.length) return [];
 
+  // Group consecutive hotspots sharing a `focusSession` into one zoom session.
+  const sessions = [];
+  for (const h of hotspots) {
+    const prev = sessions[sessions.length - 1];
+    if (prev && h.focusSession != null && prev.key === h.focusSession) prev.items.push(h);
+    else sessions.push({ key: h.focusSession, items: [h] });
+  }
+
   const firstCursor = sorted.find((e) => (e.selector || e.point) && CURSOR.includes(e.type)) || hotspots[0];
-  // Opening rest keyframe: full view, no anchor (pinned to scene start).
+  // Opening rest keyframe: full view, pinned to scene start.
   const kfs = [{ at: 0, ...anchorOf(firstCursor), zoom: restZoom, ease: 'cubic-out', tAnchor: null }];
   let prevRestSel = anchorOf(firstCursor).selector || '.react-flow__pane';
 
-  hotspots.forEach((h, hi) => {
-    const z = h.focusZoom ?? baseFocus;
-    // All zoomed keyframes for this hotspot share one resolved position so the
-    // camera is pixel-LOCKED through the whole close-up — record.js resolves the
-    // point once per group and reuses it (no drift while typing/choosing).
-    const fg = `hs${hi}`;
-    const inA = anchorOf(h);          // zoom target (search box / input field)
+  sessions.forEach((session, si) => {
+    const items = session.items;
+    const first = items[0];
+    const last = items[items.length - 1];
+    const z = first.focusZoom ?? baseFocus;
+    const fg = `s${si}`;
+    const isDrag = first.type === 'drag';
+    // This session owns events only up to the NEXT session's first hotspot — so
+    // searches for the result-click / colour-commit can't grab a later node's.
+    const scopeEnd = sessions[si + 1] ? (sessions[si + 1].items[0].at || 0) : Infinity;
 
-    let inRef;        // input event the zoom-IN is timed from
-    let inStartOff;   // ms after that event when the zoom-IN begins
-    let outRef;       // input event the zoom-OUT is timed from
-    let outStartOff;  // ms after that event when the zoom-OUT begins
-    let planInStart;  // approximate plan time (only used to schedule live position resolution)
-    let planOutStart;
-    // Where the camera RESTS after this hotspot. The pull-out should CENTRE on
-    // the node that was just added/edited (so it's visible) — NOT the pane
-    // centre, which only ever shows the middle slice and hides edge nodes.
-    let restSel = nodeSelOf(h.selector);
+    // Node the camera rests on once it pulls back.
+    let restSel = '.react-flow__pane';
+    for (const it of items) { const n = nodeOf(it); if (n !== '.react-flow__pane') { restSel = n; break; } }
 
-    if (isSearchFill(h)) {
-      const rc = [...sorted].reverse().find((e) => (e.at || 0) <= (h.at || 0) && e.type === 'rightClick');
-      const result = sorted.find((e) => (e.at || 0) > (h.at || 0) && (e.type === 'click' || e.type === 'dblclick') && (e.selector || e.point));
-      // The picked node lands in the flow at the injectFlow right AFTER the
-      // result click — that's the cue to pull out (not the click itself, so the
-      // viewer first sees the result clicked + the node appear at full zoom).
-      const added = result ? sorted.find((e) => (e.at || 0) > (result.at || 0) && e.type === 'injectFlow') : null;
-      const outAnchor = added ?? result;
-      // Zoom IN: delay after the right-click that opened the menu.
-      inRef = idxOf(rc ?? h);
-      inStartOff = delayMs;
-      // Zoom OUT: the moment the node is added (offset 0). No anchor → fall back
-      // to a held timeout from the zoom-in.
-      outRef = outAnchor ? idxOf(outAnchor) : inRef;
-      outStartOff = outAnchor ? 0 : delayMs + zoomMs + holdMs;
-      planInStart = (rc ? rc.at || 0 : h.at || 0) + delayMs / 1000;
-      planOutStart = outAnchor ? (outAnchor.at || 0) : planInStart + (zoomMs + holdMs) / 1000;
-      // Rest on the freshly-added node (its id == the injectFlow's nodeCount).
-      if (added && added.nodeCount != null) restSel = `.react-flow__node[data-id="${added.nodeCount}"]`;
+    // ── zoom-IN timing — from the FIRST item.
+    let inRef, inStartOff, planInStart;
+    if (isSearchFill(first)) {
+      const rc = [...sorted].reverse().find((e) => (e.at || 0) <= (first.at || 0) && e.type === 'rightClick');
+      inRef = idxOf(rc ?? first); inStartOff = delayMs;
+      planInStart = (rc ? rc.at || 0 : first.at || 0) + delayMs / 1000;
     } else {
-      // Plain hotspot (value input OR a click that opens a dialog). Zoom in
-      // after it starts. If it opens something the user then COMMITS in — a
-      // colour swatch inside a [role="dialog"], before the next hotspot — hold
-      // until that commit, then pull out. Otherwise hold a fixed beat.
-      inRef = idxOf(h);
-      inStartOff = delayMs;
-      planInStart = (h.at || 0) + delayMs / 1000;
-      const nextHs = hotspots[hi + 1];
-      const scopeEnd = nextHs ? (nextHs.at || 0) : Infinity;
-      const commit = sorted.find((e) =>
-        (e.at || 0) > (h.at || 0) && (e.at || 0) < scopeEnd
-        && e.type === 'click' && /dialog/i.test(e.selector || ''));
-      if (commit) {
-        outRef = idxOf(commit);
-        outStartOff = 0;
-        planOutStart = commit.at || 0;
-      } else {
-        outRef = idxOf(h);
-        outStartOff = delayMs + zoomMs + holdMs;
-        planOutStart = planInStart + (zoomMs + holdMs) / 1000;
-      }
+      inRef = idxOf(first); inStartOff = delayMs;
+      planInStart = (first.at || 0) + delayMs / 1000;
     }
 
-    // Hold on the PREVIOUS node, then snap over `panMs` to this hotspot — the
-    // pan is fast no matter how long the gap is (the camera just waits longer
-    // on the previous node). Anchored to the same event as the zoom-in.
-    kfs.push({ at: round(planInStart - panMs / 1000),      selector: prevRestSel, zoom: restZoom, ease: 'linear',  seg: hi, tAnchor: { ref: inRef,  offsetMs: Math.max(0, inStartOff - panMs) } }); // hold on prev node
-    kfs.push({ at: round(planInStart),                     ...inA,  zoom: restZoom, ease: 'cubic-out',   focusGroup: fg, seg: hi, tAnchor: { ref: inRef,  offsetMs: inStartOff } });             // fast-glide arrived, about to zoom
-    kfs.push({ at: round(planInStart + zoomMs / 1000),     ...inA,  zoom: z,        ease,               focusGroup: fg, seg: hi, tAnchor: { ref: inRef,  offsetMs: inStartOff + zoomMs } });    // ZOOM IN
-    kfs.push({ at: round(planOutStart),                    ...inA,  zoom: z,        ease: 'linear',     focusGroup: fg, seg: hi, tAnchor: { ref: outRef, offsetMs: outStartOff } });            // HOLD — locked still
-    kfs.push({ at: round(planOutStart + zoomOutMs / 1000), selector: restSel, zoom: restZoom, ease,                   seg: hi, tAnchor: { ref: outRef, offsetMs: outStartOff + zoomOutMs } }); // ZOOM OUT, centred on the node
-    prevRestSel = restSel; // next hotspot glides FROM this node
+    // ── zoom-OUT timing — from the LAST item.
+    let outRef, outStartOff, planOutStart;
+    if (isSearchFill(last)) {
+      // Lone search (node with no settings): pull out when the result is clicked.
+      const result = sorted.find((e) => (e.at || 0) > (last.at || 0) && (e.type === 'click' || e.type === 'dblclick') && (e.selector || e.point));
+      outRef = result ? idxOf(result) : idxOf(last);
+      outStartOff = result ? holdMs : delayMs + zoomMs + holdMs;
+      planOutStart = result ? (result.at || 0) + holdMs / 1000 : planInStart + (zoomMs + holdMs) / 1000;
+    } else {
+      // A colour edit commits in a [role="dialog"]; hold until that click, else
+      // a fixed beat after the last field. The commit search is BOUNDED to this
+      // session (scopeEnd) — without it a drag with no dialog grabbed a LATER
+      // node's colour pick, so the drag stayed zoomed for seconds and overlapped
+      // the next session (the shaky pull-out). The plain pull-out (a drag) holds
+      // delayMs+zoomMs+holdMs after the action — i.e. AFTER the zoom-in finishes,
+      // so the hold/zoom-out keyframes never land before the zoom-in completes.
+      const commit = sorted.find((e) => (e.at || 0) > (last.at || 0) && (e.at || 0) < scopeEnd && e.type === 'click' && /dialog/i.test(e.selector || ''));
+      if (commit) { outRef = idxOf(commit); outStartOff = holdMs; planOutStart = (commit.at || 0) + holdMs / 1000; }
+      else { outRef = idxOf(last); outStartOff = delayMs + zoomMs + holdMs; planOutStart = (last.at || 0) + (delayMs + zoomMs + holdMs) / 1000; }
+    }
+
+    const inA = isDrag ? { framePair: { a: first.selector, b: first.toSelector }, focusSelector: first.focusSelector } : anchorOf(first);
+    const outA = isDrag ? inA : { selector: restSel };
+    const fgB = `${fg}b`; // second locked frame (the node, for the settings phase)
+
+    // 1) hold on previous node, 2) fast-glide arrive on the first target, 3) zoom IN.
+    // The camera only MOVES here (before any typing) and zooms in over zoomMs.
+    kfs.push({ at: round(planInStart - panMs / 1000), selector: prevRestSel, zoom: restZoom, ease: 'linear', seg: si, tAnchor: { ref: inRef, offsetMs: Math.max(0, inStartOff - panMs) } });
+    kfs.push({ at: round(planInStart), ...inA, zoom: restZoom, ease: 'cubic-out', focusGroup: fg, seg: si, tAnchor: { ref: inRef, offsetMs: inStartOff } });
+    kfs.push({ at: round(planInStart + zoomMs / 1000), ...inA, zoom: z, ease, focusGroup: fg, seg: si, tAnchor: { ref: inRef, offsetMs: inStartOff + zoomMs } });
+
+    if (isSearchFill(first)) {
+      // The camera is now LOCKED on the search box. Hold it dead-still until the
+      // result is picked — no pan/zoom while the node NAME is being typed, so it
+      // stays readable. Then glide to the node and hold still through settings.
+      const result = sorted.find((e) => (e.at || 0) > (first.at || 0) && (e.at || 0) < scopeEnd && (e.type === 'click' || e.type === 'dblclick') && (e.selector || e.point));
+      const resRef = result ? idxOf(result) : inRef;
+      const resOff = result ? holdMs : inStartOff + zoomMs + holdMs;
+      const planRes = result ? (result.at || 0) + holdMs / 1000 : planInStart + (zoomMs + holdMs) / 1000;
+      kfs.push({ at: round(planRes), ...inA, zoom: z, ease: 'linear', focusGroup: fg, seg: si, tAnchor: { ref: resRef, offsetMs: resOff } }); // HOLD on search box (typing the name)
+
+      const configs = items.slice(1);
+      if (configs.length) {
+        // Frame the NODE for its settings (its int fields) — or the colour
+        // [role="dialog"] if the edit is a colour. Held still while typing.
+        // The dialog only exists between the swatch-click and the colour-pick;
+        // a camera keyframe timed just outside that window can't resolve it, so
+        // it would be SKIPPED live and the camera would slowly drift from the
+        // search box to the node instead of holding+snapping out. `fallbackSelector`
+        // keeps the keyframe alive on the node in that case.
+        const cfgFrame = last.focusSelector ? { selector: last.focusSelector, fallbackSelector: restSel } : { selector: restSel };
+        kfs.push({ at: round(planRes + panMs / 1000), ...cfgFrame, zoom: z, ease, focusGroup: fgB, seg: si, tAnchor: { ref: resRef, offsetMs: resOff + panMs } }); // glide to node (between typings)
+        const commit = sorted.find((e) => (e.at || 0) > (last.at || 0) && (e.at || 0) < scopeEnd && e.type === 'click' && /dialog/i.test(e.selector || ''));
+        const oRef = commit ? idxOf(commit) : idxOf(last);
+        const oOff = holdMs;
+        const planOut = commit ? (commit.at || 0) + holdMs / 1000 : (last.at || 0) + holdMs / 1000;
+        kfs.push({ at: round(planOut), ...cfgFrame, zoom: z, ease: 'linear', focusGroup: fgB, seg: si, tAnchor: { ref: oRef, offsetMs: oOff } }); // HOLD on node (typing settings)
+        kfs.push({ at: round(planOut + zoomOutMs / 1000), ...outA, zoom: restZoom, ease, seg: si, tAnchor: { ref: oRef, offsetMs: oOff + zoomOutMs } });
+      } else {
+        kfs.push({ at: round(planRes + zoomOutMs / 1000), ...outA, zoom: restZoom, ease, seg: si, tAnchor: { ref: resRef, offsetMs: resOff + zoomOutMs } });
+      }
+    } else {
+      // Drag (or a config-only session): hold on the framed target, then zoom out.
+      kfs.push({ at: round(planOutStart), ...inA, zoom: z, ease: 'linear', focusGroup: fg, seg: si, tAnchor: { ref: outRef, offsetMs: outStartOff } });
+      kfs.push({ at: round(planOutStart + zoomOutMs / 1000), ...outA, zoom: restZoom, ease, seg: si, tAnchor: { ref: outRef, offsetMs: outStartOff + zoomOutMs } });
+    }
+
+    prevRestSel = isDrag ? (first.focusSelector || restSel) : restSel;
   });
   return kfs;
 }

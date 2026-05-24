@@ -36,6 +36,13 @@ export const DEFAULTS = {
       hesitation: [70, 180],
       curvature: 0.4,
     },
+    // Cinematic interaction engine: themed click + mark effects (see effects.js).
+    // theme: a named theme, "random"/"auto" (one per video, seeded), or
+    // "sequence" (rotate per scene). Default reproduces the original look.
+    effects: {
+      theme: 'gold-ripple',
+      palette: undefined,
+    },
   },
   output: {
     dir: 'output',
@@ -62,6 +69,8 @@ Options:
   --url <url>           Override the app URL
   --speed <n>           Playback speed-up applied to every clip (>=1)
   --max-total-sec <n>   Auto-derive a speed-up so the final video fits this many seconds
+  s=<n> | --scene <n>   Record ONLY this scene (1-based index, or a scene id / id substring)
+  flow=<name>           Record a named flow: uses its generated pipeline + fixed output/<name> dir
   -h, --help            Show this help
 
 Env vars (override pipeline.json, are overridden by CLI flags):
@@ -71,6 +80,11 @@ Env vars (override pipeline.json, are overridden by CLI flags):
 
 Precedence: CLI flag > env var > pipeline.json > built-in default.
 Defaults: pipeline = ./pipeline.json
+
+Examples:
+  npm run record              Record every scene
+  npm run record s=3          Record only the 3rd scene
+  npm run record s=03-complete-strategy   Record only that scene by id
 `;
 
 // Parse a numeric CLI/env value; returns undefined if absent or not a number.
@@ -83,7 +97,7 @@ export function numOpt(v) {
 export function parseCli(argv = process.argv.slice(2)) {
   const cli = {
     pipelinePath: 'pipeline.json', headless: undefined, outDir: undefined, url: undefined,
-    speed: undefined, maxTotalSec: undefined,
+    speed: undefined, maxTotalSec: undefined, scene: undefined, flow: undefined,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -102,6 +116,14 @@ export function parseCli(argv = process.argv.slice(2)) {
       cli.speed = numOpt(argv[++i]);
     } else if (arg === '--max-total-sec') {
       cli.maxTotalSec = numOpt(argv[++i]);
+    } else if (arg === '--scene' || arg === '-s') {
+      cli.scene = argv[++i];
+    } else if (/^(s|scene)=/.test(arg)) {
+      cli.scene = arg.slice(arg.indexOf('=') + 1);
+    } else if (arg === '--flow' || arg === '-f') {
+      cli.flow = argv[++i];
+    } else if (/^(f|flow)=/.test(arg)) {
+      cli.flow = arg.slice(arg.indexOf('=') + 1);
     } else if (arg.startsWith('--')) {
       throw new Error(`Unknown option: ${arg}`);
     } else {

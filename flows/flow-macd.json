@@ -1,0 +1,477 @@
+{
+  "nodes": [
+    {
+      "id": "md",
+      "type": "customNode",
+      "position": {
+        "x": 40,
+        "y": 1104
+      },
+      "data": {
+        "Name": "Candles",
+        "Description": "Get OHLCV trading data with multiple outputs",
+        "Type": "Data Source",
+        "Inputs": [
+          {
+            "name": "length",
+            "type": "int",
+            "default": 1000
+          }
+        ],
+        "Outputs": [
+          {
+            "name": "Open",
+            "type": "array",
+            "source": true,
+            "group": "OHLCV"
+          },
+          {
+            "name": "High",
+            "type": "array",
+            "source": true,
+            "group": "OHLCV"
+          },
+          {
+            "name": "Low",
+            "type": "array",
+            "source": true,
+            "group": "OHLCV"
+          },
+          {
+            "name": "Close",
+            "type": "array",
+            "source": true,
+            "group": "OHLCV"
+          },
+          {
+            "name": "HL2",
+            "type": "array",
+            "source": true,
+            "group": "Derived Prices"
+          },
+          {
+            "name": "HLC3",
+            "type": "array",
+            "source": true,
+            "group": "Derived Prices"
+          },
+          {
+            "name": "OHLC4",
+            "type": "array",
+            "source": true,
+            "group": "Derived Prices"
+          },
+          {
+            "name": "HLCC4",
+            "type": "array",
+            "source": true,
+            "group": "Derived Prices"
+          },
+          {
+            "name": "Volume",
+            "type": "array",
+            "source": true,
+            "group": "OHLCV"
+          },
+          {
+            "name": "Full Data",
+            "type": "array",
+            "source": true,
+            "group": "Derived Prices"
+          }
+        ],
+        "id": "md",
+        "nodeKey": "ohlcv.data",
+        "isPlotNode": false,
+        "isDrawingNode": false,
+        "plotType": null,
+        "plotConfig": null,
+        "defaultConfig": null,
+        "inputValues": {},
+        "Parameters": {
+          "start_date": {
+            "Type": "Date",
+            "Default": "",
+            "Description": "Start date (YYYY-MM-DD). Empty = auto-calculated from length"
+          },
+          "end_date": {
+            "Type": "Date",
+            "Default": "",
+            "Description": "End date (YYYY-MM-DD). Empty = today"
+          }
+        },
+        "isCollapsed": false
+      }
+    },
+    {
+      "id": "macd",
+      "type": "customNode",
+      "position": {
+        "x": 340,
+        "y": 1148
+      },
+      "data": {
+        "Name": "MACD",
+        "Description": "Moving Average Convergence Divergence",
+        "Type": "Momentum",
+        "Inputs": [
+          {
+            "name": "close",
+            "type": "array"
+          },
+          {
+            "name": "fast",
+            "type": "int",
+            "default": 12
+          },
+          {
+            "name": "slow",
+            "type": "int",
+            "default": 26
+          },
+          {
+            "name": "signal",
+            "type": "int",
+            "default": 9
+          }
+        ],
+        "Outputs": [
+          {
+            "name": "macd",
+            "type": "array",
+            "source": true
+          },
+          {
+            "name": "signal",
+            "type": "array",
+            "source": true
+          },
+          {
+            "name": "hist",
+            "type": "array",
+            "source": true
+          }
+        ],
+        "id": "macd",
+        "nodeKey": "ta.macd",
+        "isPlotNode": false,
+        "isDrawingNode": false,
+        "plotType": null,
+        "plotConfig": null,
+        "defaultConfig": null,
+        "inputValues": {
+          "1": "12",
+          "2": "26",
+          "3": "9",
+          "fast": "12",
+          "slow": "26",
+          "signal": "9"
+        },
+        "isCollapsed": false
+      }
+    },
+    {
+      "id": "plot_macd",
+      "type": "customNode",
+      "position": {
+        "x": 640,
+        "y": 564
+      },
+      "data": {
+        "Name": "Plot",
+        "Description": "Plot series on chart",
+        "Type": "Plot",
+        "Inputs": [
+          {
+            "name": "series",
+            "type": "array",
+            "target": true
+          },
+          {
+            "name": "condition",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_2",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_3",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_4",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "baseline",
+            "type": "array",
+            "target": true,
+            "optional": true
+          }
+        ],
+        "Outputs": [],
+        "id": "plot_macd",
+        "nodeKey": "plot",
+        "isPlotNode": true,
+        "isDrawingNode": false,
+        "plotType": "line",
+        "plotConfig": {
+          "type": "line",
+          "color": "#3b82f6",
+          "lineWidth": 1,
+          "dash": "solid",
+          "opacity": 1,
+          "baseline": {
+            "mode": "bottom",
+            "value": 0
+          },
+          "group": "macd"
+        },
+        "defaultConfig": {
+          "type": "line",
+          "color": "#3b82f6",
+          "lineWidth": 1,
+          "dash": "solid",
+          "opacity": 1,
+          "baseline": {
+            "mode": "bottom",
+            "value": 0
+          },
+          "group": "macd"
+        },
+        "inputValues": {
+          "group": "macd"
+        },
+        "isCollapsed": false
+      }
+    },
+    {
+      "id": "plot_signal",
+      "type": "customNode",
+      "position": {
+        "x": 640,
+        "y": 920
+      },
+      "data": {
+        "Name": "Plot",
+        "Description": "Plot series on chart",
+        "Type": "Plot",
+        "Inputs": [
+          {
+            "name": "series",
+            "type": "array",
+            "target": true
+          },
+          {
+            "name": "condition",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_2",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_3",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_4",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "baseline",
+            "type": "array",
+            "target": true,
+            "optional": true
+          }
+        ],
+        "Outputs": [],
+        "id": "plot_signal",
+        "nodeKey": "plot",
+        "isPlotNode": true,
+        "isDrawingNode": false,
+        "plotType": "line",
+        "plotConfig": {
+          "type": "line",
+          "color": "#3b82f6",
+          "lineWidth": 1,
+          "dash": "solid",
+          "opacity": 1,
+          "baseline": {
+            "mode": "bottom",
+            "value": 0
+          },
+          "group": "macd"
+        },
+        "defaultConfig": {
+          "type": "line",
+          "color": "#3b82f6",
+          "lineWidth": 1,
+          "dash": "solid",
+          "opacity": 1,
+          "baseline": {
+            "mode": "bottom",
+            "value": 0
+          },
+          "group": "macd"
+        },
+        "inputValues": {
+          "group": "macd"
+        },
+        "isCollapsed": false
+      }
+    },
+    {
+      "id": "plot_hist",
+      "type": "customNode",
+      "position": {
+        "x": 640,
+        "y": 1276
+      },
+      "data": {
+        "Name": "Plot",
+        "Description": "Plot series on chart",
+        "Type": "Plot",
+        "Inputs": [
+          {
+            "name": "series",
+            "type": "array",
+            "target": true
+          },
+          {
+            "name": "condition",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_2",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_3",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_4",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "baseline",
+            "type": "array",
+            "target": true,
+            "optional": true
+          }
+        ],
+        "Outputs": [],
+        "id": "plot_hist",
+        "nodeKey": "plot",
+        "isPlotNode": true,
+        "isDrawingNode": false,
+        "plotType": "histogram",
+        "plotConfig": {
+          "type": "histogram",
+          "color": "#3b82f6",
+          "lineWidth": 1,
+          "dash": "solid",
+          "opacity": 1,
+          "baseline": {
+            "mode": "zero",
+            "value": 0
+          },
+          "group": "macd"
+        },
+        "defaultConfig": {
+          "type": "histogram",
+          "color": "#3b82f6",
+          "lineWidth": 1,
+          "dash": "solid",
+          "opacity": 1,
+          "baseline": {
+            "mode": "zero",
+            "value": 0
+          },
+          "group": "macd"
+        },
+        "inputValues": {
+          "group": "macd"
+        },
+        "isCollapsed": false
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "md",
+      "sourceHandle": "output-3",
+      "target": "macd",
+      "targetHandle": "input-0",
+      "id": "mdoutput-3-macdinput-0-1779622248691-o9xninzoq"
+    },
+    {
+      "source": "macd",
+      "sourceHandle": "output-0",
+      "target": "plot_macd",
+      "targetHandle": "input-0",
+      "id": "macdoutput-0-plot_macdinput-0-1779622248691-k7cp39lw1"
+    },
+    {
+      "source": "macd",
+      "sourceHandle": "output-0",
+      "target": "plot_macd",
+      "targetHandle": "input-0",
+      "id": "macdoutput-0-plot_macdinput-0-1779622248691-2aq9iqaez"
+    },
+    {
+      "source": "macd",
+      "sourceHandle": "output-0",
+      "target": "plot_signal",
+      "targetHandle": "input-0",
+      "id": "macdoutput-0-plot_signalinput-0-1779622248691-zkx3nr2ek"
+    },
+    {
+      "source": "macd",
+      "sourceHandle": "output-0",
+      "target": "plot_signal",
+      "targetHandle": "input-0",
+      "id": "macdoutput-0-plot_signalinput-0-1779622248691-j36ly3336"
+    },
+    {
+      "source": "macd",
+      "sourceHandle": "output-0",
+      "target": "plot_hist",
+      "targetHandle": "input-0",
+      "id": "macdoutput-0-plot_histinput-0-1779622248691-13ucxh1sn"
+    },
+    {
+      "source": "macd",
+      "sourceHandle": "output-0",
+      "target": "plot_hist",
+      "targetHandle": "input-0",
+      "id": "macdoutput-0-plot_histinput-0-1779622248691-vlos5y3d0"
+    }
+  ]
+}

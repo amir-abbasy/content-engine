@@ -1,0 +1,149 @@
+{
+  "name": "rsi-strategy-reel",
+  "app": {
+    "url": "http://localhost:3000/",
+    "viewport": {"width":1920,"height":1080},
+    "waitForPyodide": true,
+    "pyodideLoaderSelector": ".app-pyodide-loader",
+    "readySelector": "#main-chart",
+    "readyTimeoutMs": 120000
+  },
+  "record": {
+    "browser": "chromium",
+    "headless": false,
+    "timelineOffsetMs": 0,
+    "settleMs": 300,
+    "humanize": {
+      "seed": 7,
+      "jitter": 0.15,
+      "scale": 1,
+      "preActionPause": [
+        40,
+        90
+      ]
+    },
+    "autoZoom": {
+      "enabled": true,
+      "lockX": false,
+      "restZoom": 1,
+      "focusZoom": 2,
+      "delayMs": 350,
+      "zoomMs": 500,
+      "zoomOutMs": 300,
+      "holdMs": 400,
+      "panMs": 250,
+      "ease": "cubic-in-out"
+    },
+    "cursor": {
+      "movement": "human",
+      "duration": [
+        140,
+        260
+      ],
+      "overshoot": 0.12,
+      "hesitation": [
+        25,
+        60
+      ],
+      "curvature": 0.4
+    }
+  },
+  "output": {
+    "dir": "output",
+    "resolution": {"width":1080,"height":1920},
+    "fps": 30,
+    "fitMode": "cover",
+    "keepRaw": true,
+    "speed": 1
+  },
+  "scenes": [
+    {
+      "id": "rsi-strategy",
+      "description": "Build the complete RSI strategy on camera: add every node, enter its settings, draw every connection, then run the backtest. Fully generated from flows/flow-rsi.json by scripts/gen-pipeline.js.",
+      "target": {"selector":".react-flow","aspect":"9:16","anchor":"center"},
+      "setup": [
+        {"at":0,"type":"press","key":"Digit2","shift":true},
+        {"at":0.4,"type":"injectFlow","file":"flows/rsi/build.json"},
+        {"at":1.6,"type":"press","key":"Digit2","shift":true},
+        {"at":2,"type":"injectFlow","file":"flows/rsi/build.json","nodeCount":0}
+      ],
+      "durationSec": 125.6,
+      "holdAfterSec": 2,
+      "autoCamera": true,
+      "tracks": {
+        "input": [
+          {"at":0.8,"type":"rightClick","selector":".react-flow__pane","position":{"x":-271,"y":959},"addsNodeId":1},
+          {"at":1.8,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"candles","focusZoom":2,"focusSession":1},
+          {"at":4.2,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"Candles\"))"},
+          {"at":5.3,"type":"fill","selector":".react-flow__node[data-id=\"1\"] input[placeholder=\"int\"]","nth":0,"text":"1000","focusZoom":2.4,"focusSession":1},
+          {"at":8.5,"type":"rightClick","selector":".react-flow__pane","position":{"x":-66,"y":858},"addsNodeId":2},
+          {"at":9.5,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"rsi","focusZoom":2,"focusSession":2},
+          {"at":11.9,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"RSI\"))"},
+          {"at":13,"type":"fill","selector":".react-flow__node[data-id=\"2\"] input[placeholder=\"int\"]","nth":0,"text":"14","focusZoom":2.4,"focusSession":2},
+          {"at":16.2,"type":"drag","selector":".react-flow__node[data-id=\"1\"] .react-flow__handle[data-handleid=\"output-3\"]","toSelector":".react-flow__node[data-id=\"2\"] .react-flow__handle[data-handleid=\"input-0\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"2\"]"},
+          {"at":19.6,"type":"rightClick","selector":".react-flow__pane","position":{"x":1,"y":1220},"addsNodeId":3},
+          {"at":20.6,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"h-line","focusZoom":2,"focusSession":3},
+          {"at":23,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"H-Line\"))"},
+          {"at":24.1,"type":"click","selector":".react-flow__node[data-id=\"3\"] .aspect-square","focusZoom":2,"focusSelector":"[role=\"dialog\"]","focusSession":3},
+          {"at":25.3,"type":"click","selector":"[role=\"dialog\"] button[title=\"#ef4444\"]","focusSession":3},
+          {"at":27.9,"type":"rightClick","selector":".react-flow__pane","position":{"x":138,"y":472},"addsNodeId":4},
+          {"at":28.9,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"crossunder","focusZoom":2,"focusSession":4},
+          {"at":31.3,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"Crossunder\"))"},
+          {"at":32.4,"type":"fill","selector":".react-flow__node[data-id=\"4\"] input[placeholder=\"array\"]","text":"70","focusZoom":2.4,"focusSession":4},
+          {"at":35.6,"type":"drag","selector":".react-flow__node[data-id=\"2\"] .react-flow__handle[data-handleid=\"output-0\"]","toSelector":".react-flow__node[data-id=\"4\"] .react-flow__handle[data-handleid=\"input-0\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"4\"]"},
+          {"at":39,"type":"rightClick","selector":".react-flow__pane","position":{"x":138,"y":636},"addsNodeId":5},
+          {"at":40,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"plot","focusZoom":2,"focusSession":5},
+          {"at":42.4,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"Plot\"))"},
+          {"at":43.5,"type":"click","selector":".react-flow__node[data-id=\"5\"] .aspect-square","focusZoom":2,"focusSelector":"[role=\"dialog\"]","focusSession":5},
+          {"at":44.7,"type":"click","selector":"[role=\"dialog\"] button[title=\"#3b82f6\"]","focusSession":5},
+          {"at":47.3,"type":"drag","selector":".react-flow__node[data-id=\"2\"] .react-flow__handle[data-handleid=\"output-0\"]","toSelector":".react-flow__node[data-id=\"5\"] .react-flow__handle[data-handleid=\"input-0\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"5\"]"},
+          {"at":50.7,"type":"rightClick","selector":".react-flow__pane","position":{"x":138,"y":1097},"addsNodeId":6},
+          {"at":51.7,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"crossover","focusZoom":2,"focusSession":6},
+          {"at":54.1,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"Crossover\"))"},
+          {"at":55.2,"type":"fill","selector":".react-flow__node[data-id=\"6\"] input[placeholder=\"array\"]","text":"30","focusZoom":2.4,"focusSession":6},
+          {"at":58.4,"type":"drag","selector":".react-flow__node[data-id=\"2\"] .react-flow__handle[data-handleid=\"output-0\"]","toSelector":".react-flow__node[data-id=\"6\"] .react-flow__handle[data-handleid=\"input-0\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"6\"]"},
+          {"at":61.8,"type":"rightClick","selector":".react-flow__pane","position":{"x":139,"y":1378},"addsNodeId":7},
+          {"at":62.8,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"h-line","focusZoom":2,"focusSession":7},
+          {"at":65.2,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"H-Line\"))"},
+          {"at":66.3,"type":"click","selector":".react-flow__node[data-id=\"7\"] .aspect-square","focusZoom":2,"focusSelector":"[role=\"dialog\"]","focusSession":7},
+          {"at":67.5,"type":"click","selector":"[role=\"dialog\"] button[title=\"#22c55e\"]","focusSession":7},
+          {"at":70.1,"type":"rightClick","selector":".react-flow__pane","position":{"x":338,"y":1297},"addsNodeId":8},
+          {"at":71.1,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"plot shape","focusZoom":2,"focusSession":8},
+          {"at":73.5,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"Plot Shape\"))"},
+          {"at":74.6,"type":"click","selector":".react-flow__node[data-id=\"8\"] .aspect-square","focusZoom":2,"focusSelector":"[role=\"dialog\"]","focusSession":8},
+          {"at":75.8,"type":"click","selector":"[role=\"dialog\"] button[title=\"#22c55e\"]","focusSession":8},
+          {"at":78.4,"type":"drag","selector":".react-flow__node[data-id=\"6\"] .react-flow__handle[data-handleid=\"output-0\"]","toSelector":".react-flow__node[data-id=\"8\"] .react-flow__handle[data-handleid=\"input-0\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"8\"]"},
+          {"at":81.8,"type":"rightClick","selector":".react-flow__pane","position":{"x":342,"y":277},"addsNodeId":9},
+          {"at":82.8,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"plot shape","focusZoom":2,"focusSession":9},
+          {"at":85.2,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"Plot Shape\"))"},
+          {"at":86.3,"type":"click","selector":".react-flow__node[data-id=\"9\"] .aspect-square","focusZoom":2,"focusSelector":"[role=\"dialog\"]","focusSession":9},
+          {"at":87.5,"type":"click","selector":"[role=\"dialog\"] button[title=\"#ef4444\"]","focusSession":9},
+          {"at":90.1,"type":"drag","selector":".react-flow__node[data-id=\"4\"] .react-flow__handle[data-handleid=\"output-0\"]","toSelector":".react-flow__node[data-id=\"9\"] .react-flow__handle[data-handleid=\"input-0\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"9\"]"},
+          {"at":93.5,"type":"rightClick","selector":".react-flow__pane","position":{"x":342,"y":553},"addsNodeId":10},
+          {"at":94.5,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"strategy run","focusZoom":2,"focusSession":10},
+          {"at":96.9,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"Strategy Run\"))"},
+          {"at":99.4,"type":"drag","selector":".react-flow__node[data-id=\"6\"] .react-flow__handle[data-handleid=\"output-0\"]","toSelector":".react-flow__node[data-id=\"10\"] .react-flow__handle[data-handleid=\"input-1\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"10\"]"},
+          {"at":101.4,"type":"drag","selector":".react-flow__node[data-id=\"4\"] .react-flow__handle[data-handleid=\"output-0\"]","toSelector":".react-flow__node[data-id=\"10\"] .react-flow__handle[data-handleid=\"input-2\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"10\"]"},
+          {"at":103.4,"type":"drag","selector":".react-flow__node[data-id=\"1\"] .react-flow__handle[data-handleid=\"output-3\"]","toSelector":".react-flow__node[data-id=\"10\"] .react-flow__handle[data-handleid=\"input-0\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"10\"]"},
+          {"at":106.8,"type":"rightClick","selector":".react-flow__pane","position":{"x":547,"y":769},"addsNodeId":11},
+          {"at":107.8,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"plot trades","focusZoom":2,"focusSession":11},
+          {"at":110.2,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"Plot Trades\"))"},
+          {"at":112.7,"type":"drag","selector":".react-flow__node[data-id=\"10\"] .react-flow__handle[data-handleid=\"output-0\"]","toSelector":".react-flow__node[data-id=\"11\"] .react-flow__handle[data-handleid=\"input-1\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"11\"]"},
+          {"at":114.7,"type":"drag","selector":".react-flow__node[data-id=\"10\"] .react-flow__handle[data-handleid=\"output-1\"]","toSelector":".react-flow__node[data-id=\"11\"] .react-flow__handle[data-handleid=\"input-0\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"11\"]"},
+          {"at":121.1,"type":"click","selector":"button[title=\"Execute flow\"]"}
+        ],
+        "attention": [
+          {"at":4.9,"type":"mark","selector":".react-flow__node[data-id=\"1\"] input[placeholder=\"int\"]","nth":0,"padding":4,"durationMs":1200},
+          {"at":12.6,"type":"mark","selector":".react-flow__node[data-id=\"2\"] input[placeholder=\"int\"]","nth":0,"padding":4,"durationMs":1200},
+          {"at":23.7,"type":"mark","selector":".react-flow__node[data-id=\"3\"] .aspect-square","padding":4,"durationMs":1200},
+          {"at":32,"type":"mark","selector":".react-flow__node[data-id=\"4\"] input[placeholder=\"array\"]","padding":4,"durationMs":1200},
+          {"at":43.1,"type":"mark","selector":".react-flow__node[data-id=\"5\"] .aspect-square","padding":4,"durationMs":1200},
+          {"at":54.8,"type":"mark","selector":".react-flow__node[data-id=\"6\"] input[placeholder=\"array\"]","padding":4,"durationMs":1200},
+          {"at":65.9,"type":"mark","selector":".react-flow__node[data-id=\"7\"] .aspect-square","padding":4,"durationMs":1200},
+          {"at":74.2,"type":"mark","selector":".react-flow__node[data-id=\"8\"] .aspect-square","padding":4,"durationMs":1200},
+          {"at":85.9,"type":"mark","selector":".react-flow__node[data-id=\"9\"] .aspect-square","padding":4,"durationMs":1200}
+        ]
+      }
+    }
+  ]
+}

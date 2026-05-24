@@ -1,0 +1,8 @@
+cursor
+click indicator
+pulse
+glow
+target
+radar
+loading
+focus

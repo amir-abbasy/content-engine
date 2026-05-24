@@ -28,7 +28,7 @@ function keyCombo(ev) {
   return [...mods, ev.key].join('+');
 }
 
-const CURSOR_BEARING = new Set(['click', 'rightClick', 'dblclick', 'hover', 'fill']);
+const CURSOR_BEARING = new Set(['click', 'rightClick', 'dblclick', 'hover', 'fill', 'drag']);
 
 // Selector-resolution timeout for input actions. A missing/misnamed selector
 // must fail fast — at Playwright's 30s default a single bad click would balloon
@@ -38,6 +38,9 @@ const ACTION_TIMEOUT_MS = 6000;
 
 // Resolve the absolute viewport coords for a selector + optional position.
 async function resolveTargetPoint(page, ev) {
+  // An explicit absolute point wins (used for context-menu adds whose click
+  // must land at a computed flow coordinate, not a DOM element's box).
+  if (ev.point) return { x: ev.point.x, y: ev.point.y };
   if (!ev.selector) throw new Error(`"${ev.type}" needs a "selector"`);
   const base = page.locator(ev.selector);
   const loc = ev.nth !== undefined ? base.nth(ev.nth) : base.first();
@@ -45,6 +48,41 @@ async function resolveTargetPoint(page, ev) {
   if (!box) throw new Error(`"${ev.selector}" has no bounding box`);
   const pos = ev.position || { x: box.width / 2, y: box.height / 2 };
   return { x: box.x + pos.x, y: box.y + pos.y };
+}
+
+// A React Flow handle selector, e.g.
+// `.react-flow__node[data-id="8"] .react-flow__handle[data-handleid="input-0"]`.
+const HANDLE_RE = /\.react-flow__node\[data-id="([^"]+)"\]\s+\.react-flow__handle\[data-handleid="(output|input)-(\d+)"\]/;
+
+// Resolve a drag endpoint. For a HANDLE selector, the app sometimes renders a
+// handle id that differs from the flow's edge (optional/dynamic inputs shift the
+// numbering, e.g. a Plot Shape whose "condition" renders as input-1 not input-0).
+// So: try the exact id; if absent, pick the Nth handle of that kind (sorted by
+// index) — the same positional input the edge meant. Non-handle selectors fall
+// back to the normal box resolver.
+async function resolveDragPoint(page, selector, ev) {
+  const m = HANDLE_RE.exec(selector || '');
+  if (!m) return resolveTargetPoint(page, { ...ev, selector });
+  const [, nodeId, kind, idxStr] = m;
+  await page.locator(`.react-flow__node[data-id="${nodeId}"]`).first()
+    .waitFor({ state: 'visible', timeout: ev.timeoutMs ?? ACTION_TIMEOUT_MS }).catch(() => {});
+  const pt = await page.evaluate(({ nodeId, kind, idx }) => {
+    const node = document.querySelector(`.react-flow__node[data-id="${nodeId}"]`);
+    if (!node) return null;
+    const handles = [...node.querySelectorAll('.react-flow__handle')]
+      .map((h) => ({ id: h.getAttribute('data-handleid'), src: h.classList.contains('source'), el: h }))
+      .filter((h) => h.id && (kind === 'output') === h.src);
+    let chosen = handles.find((h) => h.id === `${kind}-${idx}`);
+    if (!chosen) {
+      handles.sort((a, b) => (+a.id.split('-')[1]) - (+b.id.split('-')[1]));
+      chosen = handles[idx] || handles[handles.length - 1];
+    }
+    if (!chosen) return null;
+    const r = chosen.el.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  }, { nodeId, kind, idx: Number(idxStr) });
+  if (!pt) throw new Error(`drag handle not found: ${selector}`);
+  return pt;
 }
 
 // Run a single event. `ctx` carries page, cursor, rng, humanize config.
@@ -81,7 +119,8 @@ export async function runEvent(ev, ctx) {
       await ctx.cursor.moveTo(pt.x, pt.y);
       await ctx.cursor.hesitate();
       await ctx.page.mouse.click(pt.x, pt.y);
-      const loc = ctx.page.locator(ev.selector).first();
+      const base = ctx.page.locator(ev.selector);
+      const loc = ev.nth !== undefined ? base.nth(ev.nth) : base.first();
       await loc.fill('', { timeout: ev.timeoutMs ?? ACTION_TIMEOUT_MS });
       const text = ev.text ?? '';
       const keyDelay = ev.delay; // optional override
@@ -113,6 +152,31 @@ export async function runEvent(ev, ctx) {
     case 'hover': {
       const pt = await resolveTargetPoint(ctx.page, ev);
       await ctx.cursor.moveTo(pt.x, pt.y);
+      return;
+    }
+
+    case 'drag': {
+      // Wire up an edge (or move anything): press the source, glide to the
+      // destination while held, release. `toSelector` resolves the target
+      // element (e.g. a target handle); `to` is absolute coords. `position` /
+      // `toPosition` offset within each element. For React Flow handles, give
+      // the source output handle and target input handle.
+      const from = await resolveDragPoint(ctx.page, ev.selector, ev);
+      let to;
+      if (ev.toSelector) {
+        to = await resolveDragPoint(ctx.page, ev.toSelector, { nth: ev.toNth, position: ev.toPosition, timeoutMs: ev.timeoutMs });
+      } else if (ev.to) {
+        to = { x: ev.to.x, y: ev.to.y };
+      } else {
+        throw new Error('"drag" needs "to" {x,y} or "toSelector"');
+      }
+      await ctx.cursor.moveTo(from.x, from.y);
+      await ctx.cursor.hesitate();
+      await ctx.page.mouse.down();
+      await ctx.page.waitForTimeout(40); // let dragstart register before moving
+      await ctx.cursor.moveTo(to.x, to.y);
+      await ctx.cursor.hesitate();
+      await ctx.page.mouse.up();
       return;
     }
 

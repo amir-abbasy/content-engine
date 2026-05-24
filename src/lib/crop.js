@@ -8,6 +8,9 @@
 //   3. mapping that region onto the output resolution (cover or contain)
 
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { FFMPEG, FFPROBE } from '../config.js';
 import { easeFFmpeg } from './humanize.js';
 
@@ -49,20 +52,50 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 // arrive AT this keyframe from the previous one (defaults to 'linear').
 // `fixed` controls value precision — integers for pixel coords, decimals for
 // zoom factors.
+// Drop interior keyframes that sit in a FLAT run (value ≈ both neighbours) —
+// e.g. the camera holding a constant cx while it zooms in/holds/out on one node.
+// These add nothing to the curve but each one nests the ffmpeg `if()` expression
+// one level deeper; a long single-scene build can otherwise produce a 140-deep
+// expression that the ffmpeg parser rejects ("Failed to configure ... crop").
+function simplifyKfs(kfs, eps) {
+  if (kfs.length <= 2) return kfs;
+  const out = [kfs[0]];
+  for (let i = 1; i < kfs.length - 1; i++) {
+    const flat = Math.abs(kfs[i].v - kfs[i - 1].v) <= eps && Math.abs(kfs[i + 1].v - kfs[i].v) <= eps;
+    if (!flat) out.push(kfs[i]);
+  }
+  out.push(kfs[kfs.length - 1]);
+  return out;
+}
+
+// Built as a FLAT SUM of gated terms — exactly one interval gate is 1 at any
+// `t`, the rest 0, so the sum is the active piece. A nested `if(...,if(...))`
+// chain (the obvious encoding) nests one level per keyframe; with easing curves
+// (each adds its own `if`) a long single-scene build reaches hundreds of levels
+// and ffmpeg's expression parser rejects it ("too many args"). A flat sum stays
+// shallow no matter how many keyframes.
 function piecewiseExpr(keyframes, fixed = 0) {
   const fmt = (v) => (fixed === 0 ? String(Math.round(v)) : Number(v).toFixed(fixed));
+  keyframes = simplifyKfs(keyframes, fixed === 0 ? 0.5 : 0.01);
   if (keyframes.length === 1) return fmt(keyframes[0].v);
-  let expr = fmt(keyframes[keyframes.length - 1].v);
-  for (let i = keyframes.length - 2; i >= 0; i--) {
+  const t0 = keyframes[0].t.toFixed(3);
+  const last = keyframes[keyframes.length - 1];
+  const terms = [`lt(t,${t0})*${fmt(keyframes[0].v)}`]; // hold before first
+  for (let i = 0; i < keyframes.length - 1; i++) {
     const a = keyframes[i];
     const b = keyframes[i + 1];
     const dt = Math.max(0.001, b.t - a.t);
     const sExpr = `((t-${a.t.toFixed(3)})/${dt.toFixed(3)})`;
     const eased = (easeFFmpeg[b.ease] || easeFFmpeg.linear)(sExpr);
     const seg = `(${fmt(a.v)}+(${fmt(b.v)}-${fmt(a.v)})*${eased})`;
-    expr = `if(lte(t,${b.t.toFixed(3)}),${seg},${expr})`;
+    const ta = a.t.toFixed(3);
+    const tb = b.t.toFixed(3);
+    // half-open [ta,tb), last segment closed [ta,tb] so the endpoint is covered
+    const gate = i === keyframes.length - 2 ? `gte(t,${ta})*lte(t,${tb})` : `gte(t,${ta})*lt(t,${tb})`;
+    terms.push(`(${gate})*${seg}`);
   }
-  return `if(lte(t,${keyframes[0].t.toFixed(3)}),${fmt(keyframes[0].v)},${expr})`;
+  terms.push(`gt(t,${last.t.toFixed(3)})*${fmt(last.v)}`); // hold after last
+  return terms.join('+');
 }
 
 // Static crop region -> "crop=W:H:X:Y".
@@ -138,7 +171,7 @@ function zoompanStage(bbox, pan, resolution, fps) {
   return `zoompan=z='${zExpr}':d=1:s=${resolution.width}x${resolution.height}:x='${xExpr}':y='${yExpr}':fps=${fps}`;
 }
 
-function buildFilter({ bbox, pan, videoSize, resolution, fps, fitMode, speed = 1 }) {
+export function buildFilter({ bbox, pan, videoSize, resolution, fps, fitMode, speed = 1 }) {
   const { width: rw, height: rh } = resolution;
   // Reset PTS so the crop filter's `t` is clip-relative (0-based).
   const resetPts = 'setpts=PTS-STARTPTS';
@@ -193,6 +226,16 @@ export async function cropScene({ rawVideo, startMs, endMs, bbox, output, resolu
   const duration = Math.max(0.1, (endMs - startMs) / 1000);
   const filter = buildFilter({ bbox, pan, videoSize, resolution, fps, fitMode, speed });
 
+  // A scene with many camera keyframes produces a very long filtergraph; passed
+  // inline via `-vf` it can blow the OS command-line limit (Windows ~32k chars →
+  // ENAMETOOLONG). Above a threshold, write it to a temp file and have ffmpeg
+  // read it with `-/vf <file>` (the `/`-prefix reads an option's value from a file).
+  let vfFile;
+  if (filter.length > 6000) {
+    vfFile = path.join(os.tmpdir(), `ce-vf-${process.pid}-${Date.now()}.txt`);
+    fs.writeFileSync(vfFile, filter);
+  }
+
   const args = [
     '-y',
     // `-ss` BEFORE `-i` is input seeking: it resets the decoded frames'
@@ -204,7 +247,7 @@ export async function cropScene({ rawVideo, startMs, endMs, bbox, output, resolu
     '-ss', start.toFixed(3),
     '-i', rawVideo,
     '-t', duration.toFixed(3),
-    '-vf', filter,
+    ...(vfFile ? ['-/vf', vfFile] : ['-vf', filter]),
     '-r', String(fps),
     '-an',
     '-c:v', 'libx264',
@@ -217,6 +260,10 @@ export async function cropScene({ rawVideo, startMs, endMs, bbox, output, resolu
     output,
   ];
 
-  await run(FFMPEG, args);
+  try {
+    await run(FFMPEG, args);
+  } finally {
+    if (vfFile) fs.rmSync(vfFile, { force: true });
+  }
   return output;
 }

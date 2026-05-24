@@ -13,7 +13,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseCli, numOpt } from './config.js';
+import { parseCli, numOpt, ROOT } from './config.js';
+import { getStrategy } from '../scripts/lib/build-flow.js';
 import { loadPipeline } from './lib/pipeline.js';
 import { launchRecorder, waitForPyodide } from './lib/browser.js';
 import { runEvent } from './lib/actions.js';
@@ -39,12 +40,50 @@ function timestamp() {
 // fast and the camera simply holds its previous position.
 const CAMERA_RESOLVE_TIMEOUT_MS = 400;
 
-// Resolve a camera event's keyframe coords (point or selector + optional position).
-async function resolveCameraPoint(page, ev) {
+const boxOf = (page, sel) =>
+  page.locator(sel).first().boundingBox({ timeout: CAMERA_RESOLVE_TIMEOUT_MS }).catch(() => null);
+
+// Resolve a camera event's keyframe coords. Three forms:
+//   • `point`      — explicit { x, y }.
+//   • `framePair`  — { a, b } two selectors (e.g. a wiring drag's source +
+//                    target handles): centre on their union and return a `zoom`
+//                    that makes BOTH fit inside the capture region (so the
+//                    connection is readable). Falls back to `focusSelector`.
+//   • `selector`   — a single element (+ optional position offset).
+async function resolveCameraPoint(page, ev, captureBox) {
   if (ev.point) return { cx: ev.point.x, cy: ev.point.y };
+  if (ev.framePair) {
+    let boxes = (await Promise.all([boxOf(page, ev.framePair.a), boxOf(page, ev.framePair.b)])).filter(Boolean);
+    if (!boxes.length && ev.focusSelector) {
+      const f = await boxOf(page, ev.focusSelector);
+      if (f) boxes = [f];
+    }
+    if (!boxes.length) return null;
+    const x1 = Math.min(...boxes.map((b) => b.x));
+    const y1 = Math.min(...boxes.map((b) => b.y));
+    const x2 = Math.max(...boxes.map((b) => b.x + b.width));
+    const y2 = Math.max(...boxes.map((b) => b.y + b.height));
+    let zoom;
+    if (captureBox) {
+      const pad = 90; // breathing room (source px) around the pair
+      const zx = captureBox.width / ((x2 - x1) + 2 * pad);
+      const zy = captureBox.height / ((y2 - y1) + 2 * pad);
+      zoom = Math.max(0.3, Math.min(zx, zy)); // never below 0.3 (full-flow view)
+    }
+    return { cx: (x1 + x2) / 2, cy: (y1 + y2) / 2, zoom };
+  }
   if (!ev.selector) return null;
-  const loc = page.locator(ev.selector).first();
-  const box = await loc.boundingBox({ timeout: CAMERA_RESOLVE_TIMEOUT_MS }).catch(() => null);
+  const loc = page.locator(ev.selector);
+  let box = await (ev.nth !== undefined ? loc.nth(ev.nth) : loc.first())
+    .boundingBox({ timeout: CAMERA_RESOLVE_TIMEOUT_MS }).catch(() => null);
+  // A transient target (e.g. the colour [role="dialog"], open only between the
+  // swatch-click and the pick) may be gone when this keyframe resolves. Fall
+  // back to a stable element (the node) so the keyframe survives — otherwise it
+  // is dropped and the camera drifts across the gap instead of holding.
+  if (!box && ev.fallbackSelector) {
+    box = await page.locator(ev.fallbackSelector).first()
+      .boundingBox({ timeout: CAMERA_RESOLVE_TIMEOUT_MS }).catch(() => null);
+  }
   if (!box) return null;
   const pos = ev.position || { x: box.width / 2, y: box.height / 2 };
   return { cx: box.x + pos.x, cy: box.y + pos.y };
@@ -63,7 +102,7 @@ async function resolveInputPoint(page, ev) {
 }
 
 async function recordSession(pipeline, { headless, rawDir }) {
-  const { browser, context, page, recordingStartedAt } = await launchRecorder({ pipeline, rawDir, headless });
+  const { browser, context, page, recordingStartedAt, fxConfig } = await launchRecorder({ pipeline, rawDir, headless });
   const rng = createRng(pipeline.record.humanize?.seed ?? 1);
   const cursor = createCursorDriver(page, rng, pipeline.record.cursor || {});
   const ctx = { page, rng, cursor, humanize: pipeline.record.humanize };
@@ -75,8 +114,59 @@ async function recordSession(pipeline, { headless, rawDir }) {
   try {
     await waitForPyodide(page, pipeline.app);
 
-    for (const scene of pipeline.scenes) {
+    for (let sceneIdx = 0; sceneIdx < pipeline.scenes.length; sceneIdx++) {
+      const scene = pipeline.scenes[sceneIdx];
       log.step(`Scene "${scene.id}"${scene.description ? ` — ${scene.description}` : ''}`);
+
+      // Pick the cinematic effects theme for this scene: an explicit
+      // `scene.effects` (string theme, or { theme, palette }) wins; otherwise a
+      // "sequence" run rotates through the theme list per scene. Either way we
+      // just nudge the live engine (window.__fx) before the scene's clicks fire.
+      const sceneFx = scene.effects;
+      let fxTheme = typeof sceneFx === 'string' ? sceneFx : (sceneFx && sceneFx.theme) || null;
+      const fxPalette = (sceneFx && typeof sceneFx === 'object') ? sceneFx.palette : null;
+      if (!fxTheme && fxConfig && fxConfig.sequence && fxConfig.sequence.length) {
+        fxTheme = fxConfig.sequence[sceneIdx % fxConfig.sequence.length];
+      }
+      if (fxTheme || fxPalette) {
+        const applied = await page.evaluate(({ t, pal }) => {
+          if (!window.__fx) return null;
+          if (t) window.__fx.setTheme(t);
+          if (pal) window.__fx.setPalette(pal);
+          return window.__fx.theme;
+        }, { t: fxTheme, pal: fxPalette }).catch(() => null);
+        if (applied) log.info(`  effects: ${applied}${fxPalette ? ` / ${fxPalette}` : ''}`);
+      }
+
+      // Pre-measure the on-screen CENTRE of each node an add-right-click will
+      // create. The app fits the viewport deterministically to the full
+      // fixture, so injecting it once lets us read exact node centres. A
+      // context-menu add places the new node CENTRED on the click and the
+      // follow-up injectFlow snaps it to that same fixture position — so
+      // right-clicking at the measured centre means the node lands exactly where
+      // it's shown (no jump), and the camera that rests on it frames the right
+      // spot. Done before the scene clock, so this probe isn't in the clip.
+      const addCenters = new Map();
+      const addClicks = (scene.tracks?.input || []).filter((e) => e.type === 'rightClick' && e.addsNodeId != null);
+      if (addClicks.length) {
+        const inj = (scene.setup || []).find((e) => e.type === 'injectFlow' && e.file && e.nodeCount === undefined);
+        if (inj) {
+          await page.keyboard.press('Shift+Digit2');
+          await runEvent({ type: 'injectFlow', file: inj.file }, ctx);
+          await page.waitForTimeout(500);
+          const ids = [...new Set(addClicks.map((e) => String(e.addsNodeId)))];
+          const centers = await page.evaluate((nodeIds) => {
+            const o = {};
+            for (const id of nodeIds) {
+              const el = document.querySelector(`.react-flow__node[data-id="${id}"]`);
+              if (el) { const r = el.getBoundingClientRect(); o[id] = { x: r.x + r.width / 2, y: r.y + r.height / 2 }; }
+            }
+            return o;
+          }, ids);
+          for (const id of ids) if (centers[id]) addCenters.set(id, centers[id]);
+          log.info(`  measured ${addCenters.size} add-node centre(s): ${[...addCenters.entries()].map(([k, v]) => `#${k}(${v.x | 0},${v.y | 0})`).join(' ')}`);
+        }
+      }
 
       // ── Setup phase — pre-clock. Same timeline shape (events with `at` in
       // seconds from setup start), so authors can stagger setup steps too.
@@ -131,12 +221,20 @@ async function recordSession(pipeline, { headless, rawDir }) {
           if (ev.focusGroup && focusCache.has(ev.focusGroup)) {
             pt = focusCache.get(ev.focusGroup);
           } else {
-            pt = await resolveCameraPoint(page, ev);
+            pt = await resolveCameraPoint(page, ev, bbox);
             if (ev.focusGroup && pt) focusCache.set(ev.focusGroup, pt);
           }
           if (!pt) {
             log.warn(`  camera kf @${(ev.at || 0).toFixed(2)}s skipped: no target`);
             return;
+          }
+          // Diagnostic: a resolved point outside the captured frame means the
+          // element was off-screen at resolution time (drift / transient state).
+          // The camera would fly off and the crop would clamp to the edge.
+          const vw = pipeline.app.viewport.width, vh = pipeline.app.viewport.height;
+          if (pt.cx < 0 || pt.cx > vw || pt.cy < 0 || pt.cy > vh) {
+            const tf = await page.evaluate(() => document.querySelector('.react-flow__viewport')?.style.transform || '?').catch(() => '?');
+            log.warn(`  camera kf @${(ev.at || 0).toFixed(2)}s OFF-SCREEN (${ev.selector || 'point'}) -> cx=${pt.cx.toFixed(0)} cy=${pt.cy.toFixed(0)} | ${tf}`);
           }
           // Resolve the POSITION live (the element must exist now), but DEFER
           // the time: it's computed after the run from the actual fire time of
@@ -144,28 +242,33 @@ async function recordSession(pipeline, { headless, rawDir }) {
           // Date.now() here would let serial-execution drift (slow typing,
           // cursor travel) stretch/crush the designed zoom durations and let the
           // pull-out fire before the result is really clicked.
+          // A `framePair` keyframe carries its own fit-zoom. Use it only for the
+          // ZOOMED-IN keyframes (ev.zoom > rest); rest/arrive keyframes keep
+          // restZoom. Never zoom in TIGHTER than requested — `min` keeps both
+          // endpoints in frame (far pairs zoom out; close pairs stay at ev.zoom).
+          const useZoom = (pt.zoom != null && ev.zoom > 1.0001) ? Math.min(ev.zoom, pt.zoom) : ev.zoom;
           focusKeyframes.push({
             _tAnchor: ev.tAnchor || null,
             _planAt: ev.at || 0,
             _seg: ev.seg, // hotspot id — keeps each zoom segment atomic
             cx: pt.cx,
             cy: pt.cy,
-            zoom: ev.zoom,
+            zoom: useZoom,
             ease: ev.ease || 'cubic-in-out',
           });
           return;
         }
         if (ev._track === 'attention') {
-          const ok = await page.evaluate(({ kind, sel, amount, padding, durationMs }) => {
+          const ok = await page.evaluate(({ kind, sel, amount, padding, durationMs, nth }) => {
             const a = window.__attention;
             if (!a) return false;
             if (kind === 'spotlight') return a.spotlight(sel);
             if (kind === 'pulse')     return a.pulse(sel);
-            if (kind === 'mark')      return a.mark(sel, { padding, durationMs });
+            if (kind === 'mark')      return a.mark(sel, { padding, durationMs, nth });
             if (kind === 'dim')       { a.dim(amount); return true; }
             if (kind === 'release')   { a.release(); return true; }
             return false;
-          }, { kind: ev.type, sel: ev.selector, amount: ev.amount, padding: ev.padding, durationMs: ev.durationMs });
+          }, { kind: ev.type, sel: ev.selector, amount: ev.amount, padding: ev.padding, durationMs: ev.durationMs, nth: ev.nth });
           if (!ok) log.warn(`  attention @${(ev.at || 0).toFixed(2)}s ${ev.type} skipped`);
           // Auto-release after `durationSec` if specified on a spotlight/dim.
           if (ev.durationSec && (ev.type === 'spotlight' || ev.type === 'dim')) {
@@ -178,6 +281,11 @@ async function recordSession(pipeline, { headless, rawDir }) {
         if (ev._track === 'reveal') {
           log.warn(`  reveal track not yet implemented (event: ${ev.type || 'untyped'})`);
           return;
+        }
+        // A context-menu add right-click fires at the measured centre of the
+        // node it will create, so the node lands exactly where it's shown.
+        if (ev.type === 'rightClick' && ev.addsNodeId != null && addCenters.has(String(ev.addsNodeId))) {
+          ev = { ...ev, point: addCenters.get(String(ev.addsNodeId)) };
         }
         // input track — also handle cameraFollow side-effect.
         if (ev.cameraFollow) {
@@ -280,11 +388,39 @@ async function recordSession(pipeline, { headless, rawDir }) {
 
 async function main() {
   const cli = parseCli();
+
+  // `flow=<name>`: one name selects the generated pipeline AND a fixed output
+  // dir (output/<name>, no timestamp — overwrites in place). Derived from the
+  // same strategy table the generators use, so paths never drift.
+  let fixedRunDir;
+  if (cli.flow) {
+    const s = getStrategy(cli.flow);
+    cli.pipelinePath = path.resolve(ROOT, s.pipelineOut);
+    fixedRunDir = path.resolve(ROOT, s.outDir);
+    log.info(`Flow "${cli.flow}": pipeline ${s.pipelineOut} → output ${s.outDir}`);
+  }
+
   const pipeline = loadPipeline(cli.pipelinePath);
 
   if (cli.headless !== undefined) pipeline.record.headless = cli.headless;
   if (cli.outDir) pipeline.output.dir = cli.outDir;
   if (cli.url) pipeline.app.url = cli.url;
+
+  // Scene filter (`s=3` or `--scene 3`): record ONLY the selected scene. Each
+  // scene is self-contained (its setup rebuilds the prior flow state via
+  // injectFlow), so a single scene records correctly in isolation — handy for
+  // iterating on one scene without re-running the whole pipeline.
+  if (cli.scene !== undefined) {
+    const sel = String(cli.scene).trim();
+    const all = pipeline.scenes;
+    let picked = /^\d+$/.test(sel) ? all[Number(sel) - 1] : undefined;
+    if (!picked) picked = all.find((s) => s.id === sel) || all.find((s) => s.id.includes(sel));
+    if (!picked) {
+      throw new Error(`Scene "${sel}" not found. Available: ${all.map((s, i) => `${i + 1}=${s.id}`).join(', ')}`);
+    }
+    pipeline.scenes = [picked];
+    log.info(`Scene filter: recording only "${picked.id}"`);
+  }
 
   // Speed-up controls: CLI flag > env var > pipeline.json > built-in default.
   const speedOverride = cli.speed ?? numOpt(process.env.OUTPUT_SPEED);
@@ -292,8 +428,9 @@ async function main() {
   const maxTotalOverride = cli.maxTotalSec ?? numOpt(process.env.OUTPUT_MAX_TOTAL_SEC);
   if (maxTotalOverride !== undefined) pipeline.output.maxTotalSec = maxTotalOverride;
 
-  const runId = `${pipeline.name}-${timestamp()}`;
-  const runDir = path.resolve(pipeline.output.dir, runId);
+  // Fixed dir for a named flow (overwrite in place); otherwise a timestamped run.
+  const runDir = fixedRunDir || path.resolve(pipeline.output.dir, `${pipeline.name}-${timestamp()}`);
+  if (fixedRunDir) fs.rmSync(runDir, { recursive: true, force: true });
   const rawDir = path.join(runDir, 'raw');
   const scenesDir = path.join(runDir, 'scenes');
   fs.mkdirSync(rawDir, { recursive: true });

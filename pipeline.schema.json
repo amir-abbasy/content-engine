@@ -87,6 +87,23 @@
             "hesitation": { "oneOf": [{ "type": "number" }, { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 }], "description": "Hover hesitation in ms before the click fires (number or [min,max])." },
             "curvature":  { "type": "number", "description": "Bezier control-point offset perpendicular to the chord (0 = straight line)." }
           }
+        },
+        "effects": {
+          "type": "object",
+          "description": "Cinematic interaction engine — themed click + mark visuals so each video wears a different look. Click effects paint on every mousedown; mark effects frame a target on `attention` mark events. The look comes from a named THEME (palette + click style + mark style).",
+          "additionalProperties": false,
+          "properties": {
+            "theme": {
+              "type": "string",
+              "default": "gold-ripple",
+              "description": "Which look to use: a specific theme name (gold-ripple, neon-wave, aurora-bloom, neural-links, energy-trails, magnetic, orbit-rings, radar-sweep), \"random\"/\"auto\" to pick one per video (seeded by record.humanize.seed for reproducibility), or \"sequence\" to rotate themes scene-by-scene. Default reproduces the original gold ripple look."
+            },
+            "palette": {
+              "type": "string",
+              "enum": ["gold", "cyan", "violet", "emerald", "crimson", "magenta", "azure", "amber"],
+              "description": "Optional colour override applied on top of the chosen theme (the theme's own palette is used when omitted)."
+            }
+          }
         }
       }
     },
@@ -131,6 +148,20 @@
         "settleMs":    { "type": "integer", "description": "Override record.settleMs for this scene." },
         "fitMode":     { "type": "string", "enum": ["cover", "contain"], "description": "Override output.fitMode for this scene." },
         "autoCamera":  { "type": "boolean", "description": "Force (true) or disable (false) auto-camera generation for this scene. If omitted, auto-camera runs when record.autoZoom.enabled and there's no manual camera track." },
+        "effects": {
+          "description": "Override the cinematic effects theme for this scene only (string theme name, or { theme, palette }). Useful for giving distinct scenes distinct looks within one video.",
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "theme":   { "type": "string" },
+                "palette": { "type": "string", "enum": ["gold", "cyan", "violet", "emerald", "crimson", "magenta", "azure", "amber"] }
+              }
+            }
+          ]
+        },
         "durationSec":   { "type": "number", "description": "Scene clip length in seconds. The scheduler holds the recording until this elapses, even if all events finished sooner." },
         "holdAfterSec":  { "type": "number", "description": "Optional static hold AFTER `durationSec`, letting the final state breathe before the next scene." },
         "setup": {
@@ -146,7 +177,7 @@
             "input":     { "type": "array", "items": { "$ref": "#/definitions/inputEvent" },     "description": "User-driven events: clicks, fills, key presses, scroll, drag, eval, injectFlow. Cursor-bearing types route through the humanized mouse driver." },
             "camera":    { "type": "array", "items": { "$ref": "#/definitions/cameraEvent" },    "description": "Camera keyframes — the crop window's centre at time `at`. Camera lerps between successive keyframes with per-keyframe `ease`." },
             "reveal":    { "type": "array", "items": { "$ref": "#/definitions/revealEvent" },    "description": "Staggered reveal effects (node appear / port glow / edge animate / param highlight). Track is reserved — runtime not yet implemented." },
-            "attention": { "type": "array", "items": { "$ref": "#/definitions/attentionEvent" }, "description": "Attention choreography (linger, pulse, inspect). Track is reserved — runtime not yet implemented." }
+            "attention": { "type": "array", "items": { "$ref": "#/definitions/attentionEvent" }, "description": "Attention choreography — spotlight / pulse / mark / dim / release on a target. `mark` frames the target using the active cinematic effects theme (overridable per event)." }
           }
         }
       }
@@ -206,14 +237,25 @@
           "description": "Click point as an offset inside the target element.",
           "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
         },
+        "addsNodeId": {
+          "type": "integer",
+          "description": "On a context-menu `rightClick` that adds a node: the fixture node id this click creates. The recorder pre-measures that node's on-screen CENTRE (by injecting the full fixture once) and fires the right-click exactly there, so the node lands where it's shown — no jump when the follow-up injectFlow snaps it in. Pairs with the fixture used by the scene's injectFlow setup."
+        },
+        "point": {
+          "type": "object", "additionalProperties": false, "required": ["x", "y"],
+          "description": "Absolute viewport coords for the click, overriding selector/position. Normally set automatically from `addsNodeId`; rarely authored by hand.",
+          "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+        },
         "to": {
           "type": "object", "additionalProperties": false, "required": ["x", "y"],
           "description": "`drag` destination as absolute viewport coords.",
           "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
         },
-        "toSelector": { "type": "string" },
+        "toSelector": { "type": "string", "description": "`drag` destination element (e.g. a target React Flow handle)." },
+        "toNth":      { "type": "integer", "description": "`drag`: which match of `toSelector` (default first)." },
         "toPosition": {
           "type": "object", "additionalProperties": false, "required": ["x", "y"],
+          "description": "`drag`: offset inside the destination element.",
           "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
         },
         "file":          { "type": "string",  "description": "`injectFlow`: path to a flow JSON." },
@@ -269,12 +311,17 @@
       "type": "object",
       "required": ["at"],
       "additionalProperties": true,
-      "description": "(Reserved.) Attention choreography — linger / pulse / inspect on a target. Runtime not yet implemented.",
+      "description": "Attention choreography on a target. `spotlight` glows the target and dims the rest; `pulse` gives a brief glow; `mark` frames it with the active cinematic mark effect; `dim` fades a global overlay; `release` clears active spotlight/dim. Colours follow the active effects theme.",
       "properties": {
         "at":         { "type": "number" },
-        "type":       { "type": "string", "description": "e.g. 'linger', 'pulse', 'inspect'." },
-        "selector":   { "type": "string" },
-        "durationSec":{ "type": "number" }
+        "type":       { "type": "string", "enum": ["spotlight", "pulse", "mark", "dim", "release"], "description": "Which attention primitive to fire." },
+        "selector":   { "type": "string", "description": "Target element (spotlight / pulse / mark)." },
+        "durationSec":{ "type": "number", "description": "For spotlight/dim: auto-release after this many seconds." },
+        "durationMs": { "type": "integer", "description": "For mark: how long the framing animation lives (default 1400)." },
+        "padding":    { "type": "number", "description": "For mark: extra px around the target's box (default 6)." },
+        "amount":     { "type": "number", "description": "For dim: overlay darkness 0..0.85." },
+        "mark":       { "type": "string", "enum": ["glowFrame", "brackets", "scan", "reticle"], "description": "For mark: override which mark effect to use instead of the active theme's." },
+        "fx":         { "type": "string", "description": "Reserved per-event effect override." }
       }
     },
 

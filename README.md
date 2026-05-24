@@ -15,6 +15,11 @@ Screen Studio-style camera that glides to each hotspot, zooms in to frame what
 you're doing, holds locked while you type/choose, then snaps back out centered
 on the node you just built. See [Automatic camera](#automatic-camera).
 
+And you usually don't write the timeline by hand at all: **drop a strategy's
+flow JSON and one command generates the whole reel** — it builds the flow on
+camera node-by-node (search → add → enter settings → wire its connections) and
+records it. See [From a flow to a video](#from-a-flow-to-a-video-generated-no-hand-authoring).
+
 ---
 
 ## Phase 1 — Pipeline-driven app recorder
@@ -60,7 +65,56 @@ node --env-file=.env src/record.js      # load env vars from .env (Node 22+)
 ```
 
 CLI flags override the pipeline file: `--headed`, `--headless`, `--out <dir>`,
-`--url <url>`, `--speed <n>`, `--max-total-sec <n>`.
+`--url <url>`, `--speed <n>`, `--max-total-sec <n>`, `s=<n>` (record one scene),
+`flow=<name>` / `--flow <name>` (record a named flow into a fixed dir).
+
+### From a flow to a video (generated, no hand-authoring)
+
+You don't hand-write a pipeline for a strategy. Drop the flow's JSON export and
+run **one command** — every recorder step (each node add, its on-camera
+settings, and every wiring drag) is DERIVED from the flow. No AI.
+
+```bash
+npm run flow rsi            # generate fixture + pipeline, then record → output/rsi/
+npm run flow rsi --headed   # extra args pass through to the recorder (--speed, s=1, …)
+npm run gen rsi             # just (re)generate, don't record
+```
+
+**One name, fixed paths** (no timestamps — overwritten in place):
+
+```
+flows/<name>/flow.json      your export (input)   — you provide
+  (also accepted: flows/<name>.json, flows/flow-<name>.json)
+flows/<name>/build.json     build fixture         — generated
+flows/<name>/pipeline.json  recorder timeline     — generated
+output/<name>/              the video             — recorded
+```
+
+**Zero-config:** an unknown name with a matching flow file just works. It builds
+the WHOLE flow in **one scene**: for each node (left-to-right) it right-clicks →
+searches → picks the node, types its settings / picks its colours on camera,
+then immediately **drags every connection that just became possible** — i.e. the
+new node's inputs from nodes already on the canvas. Finally it clicks Execute.
+Nodes are added via the real context-menu (which *appends*, so wiring already
+drawn is never wiped), and the build reads like a human assembling the strategy.
+
+**Customise** only when needed, by adding a `STRATEGIES` entry in
+`scripts/lib/build-flow.js`:
+
+| field | purpose |
+|---|---|
+| `reposition` | `{ <id\|nodeKey>: {x,y} }` — override node layout for the video |
+| `searchOverrides` | `{ <nodeKey>: { search, menu } }` — when a node's search term/label differs from its display name |
+| `configOnCamera` | enter numeric/colour settings on camera (default `true`) |
+| `extraDragEdges` | edges the export can't supply (e.g. a synthesised node) |
+| `mode: 'split'` | legacy: a base set is built in an earlier scene; regenerate only a later "complete" scene of an existing multi-scene `pipeline.json` (the `ema` entry) |
+
+It tolerates messy exports: duplicate edges are de-duped, edges to dropped nodes
+are skipped, and a drag falls back to the Nth handle of a node when the export's
+handle id doesn't match what the app renders (optional/dynamic inputs shift it).
+
+Generated builds are full-length (every node, setting, and connection on camera);
+for a social-length cut add a speed-up, e.g. `npm run flow rsi --speed 6`.
 
 Env vars (override `pipeline.json`, overridden by CLI): `OUTPUT_SPEED`,
 `OUTPUT_MAX_TOTAL_SEC`, `FFMPEG_PATH`, `FFPROBE_PATH`. Precedence for any value:
@@ -76,6 +130,33 @@ output/<pipeline-name>-<YYYY-MM-DD>_<HH-MM-SS>/
   scenes/<scene-id>.mp4     one vertical clip per scene
   manifest.json             scenes with timings, regions, camera keyframes
 ```
+
+---
+
+## Studio (preview + timeline)
+
+A local review tool that plays a flow's scenes one after another while showing
+its full authored timeline. Same flow model as above — pick a **flow** and the
+Studio reads *its* `flows/<name>/pipeline.json` and plays *its* `output/<name>/`
+clips (legacy timestamped runs use the root `pipeline.json`). A flow that hasn't
+been recorded yet still opens — you inspect the planned timeline, the player
+shows "not recorded yet".
+
+```bash
+npm run studio          # API + UI → http://localhost:5180
+```
+
+- **Right** — a 9:16 player that plays every scene clip back-to-back as one
+  continuous video (scrub, prev/next scene, Space = play/pause, ←/→ = scene).
+- **Left** — a multi-track timeline of everything the pipeline authored: Video,
+  Camera, Actions, Setup, Effects, plus the audio/text lanes (Voiceover, SFX,
+  BGM, Titles, Subtitles, VO Script). Click a block to seek there and inspect
+  its full detail. Audio/text lanes are present but empty until those
+  generators land.
+
+Record / export / timeline-editing are staged for later phases. Backed by
+`src/studio/` (Node API) + `studio/` (Vite + React); run `vite build` (or
+`npm run studio`) to (re)generate `studio/dist/` for production serving.
 
 ---
 
@@ -423,9 +504,15 @@ If clips look a few frames early / late after crop, tune
 ## Project layout
 
 ```
-pipeline.json              the timeline (your reel)
+pipeline.json              the timeline (your reel) — also hand-authorable
 pipeline.schema.json       JSON schema — full field docs + validation
-flows/                     flow JSON fixtures injected by `injectFlow` events
+flows/<name>/              one folder per strategy: flow.json (input) +
+                           build.json + pipeline.json (generated)
+scripts/lib/build-flow.js  STRATEGIES table + getStrategy() + buildFlow()
+scripts/gen-build.js       write a flow's build fixture from its export
+scripts/gen-pipeline.js    write a flow's recorder timeline from its export
+scripts/gen.js             gen-build + gen-pipeline for a flow (npm run gen <name>)
+scripts/flow.js            gen + record a flow (npm run flow <name>)
 src/record.js              orchestrator: record session -> slice -> crop
 src/config.js              defaults + CLI parsing
 src/lib/pipeline.js        load + validate the timeline
@@ -439,5 +526,8 @@ src/lib/attention.js       page-injected spotlight / mark / pulse / dim CSS
 src/lib/target.js          resolve a scene target -> pixel region
 src/lib/humanize.js        seeded PRNG, sample(), ease curves, bezier sampler
 src/lib/crop.js            ffmpeg slice + eased pan crop expression
-scripts/                   throwaway debug probes (DOM inspection)
+scripts/debug-*.js         throwaway debug probes (DOM inspection)
+src/lib/effects.js         cinematic interaction engine — themed click/mark FX
+src/studio/                Studio backend: server.js (API) + assets.js + start.js
+studio/                    Studio front-end (Vite + React): player + timeline
 ```

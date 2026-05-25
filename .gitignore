@@ -1,5 +1,6 @@
 node_modules/
 output/
 studio/dist/
+.eleven-auth.json
 *.log
 .DS_Store

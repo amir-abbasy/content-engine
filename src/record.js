@@ -363,6 +363,33 @@ async function recordSession(pipeline, { headless, rawDir }) {
       const endMs = Date.now() - recordingStartedAt;
       log.ok(`  held ${endMs - startMs}ms`);
 
+      // Per-node boundaries: when each add-right-click actually fired, plus the
+      // last input fire (the Execute click). The post/compose stage uses these
+      // to slice the clip into per-node segments and time-stretch each to its
+      // narration window. Recording-relative ms; converted to clip-seconds below.
+      const addFires = inputTrack
+        .map((e, i) => (e.type === 'rightClick' && e.addsNodeId != null ? { execId: String(e.addsNodeId), atMs: inputFireAbsMs[i] } : null))
+        .filter((f) => f && f.atMs != null);
+      const lastFireMs = inputFireAbsMs.reduce((m, v) => (v != null && v > m ? v : m), startMs);
+
+      // Sound-effect cues: the actual fire time of each interaction, plus zoom
+      // transitions derived from the camera keyframes. The compose stage remaps
+      // these through the per-beat speed and drops a sound at each.
+      const SFX_TYPES = new Set(['click', 'rightClick', 'dblclick', 'drag', 'fill']);
+      const eventFires = inputTrack
+        .map((e, i) => (SFX_TYPES.has(e.type) && inputFireAbsMs[i] != null ? { type: e.type, atMs: inputFireAbsMs[i] } : null))
+        .filter(Boolean);
+      const zoomCues = [];
+      for (let i = 1; i < focusKeyframes.length; i++) {
+        const dz = (focusKeyframes[i].zoom || 1) - (focusKeyframes[i - 1].zoom || 1);
+        const type = dz > 0.05 ? 'zoomIn' : dz < -0.05 ? 'zoomOut' : null;
+        if (!type) continue;
+        const atMs = focusKeyframes[i - 1].tMs; // sound starts as the move begins
+        const last = zoomCues[zoomCues.length - 1];
+        if (last && last.type === type && atMs - last.atMs < 200) continue; // dedup a multi-kf rise
+        zoomCues.push({ type, atMs });
+      }
+
       scenesMeta.push({
         id: scene.id,
         description: scene.description || '',
@@ -371,6 +398,10 @@ async function recordSession(pipeline, { headless, rawDir }) {
         bbox,
         fitMode: scene.fitMode || pipeline.output.fitMode,
         focusKeyframes,
+        addFires,
+        lastFireMs,
+        eventFires,
+        zoomCues,
       });
     }
   } finally {
@@ -504,7 +535,18 @@ async function main() {
         videoSize: pipeline.app.viewport,
         speed,
       });
-      results.push({ ...meta, startMs, endMs, clip, status: 'ok' });
+      // Node boundaries in the FINISHED clip's own timeline (seconds): raw fire
+      // time, scaled to the raw video, shifted to the clip start, divided by the
+      // applied speed. The compose stage slices on these.
+      const toClipSec = (fireMs) => Math.max(0, (((fireMs - meta.startMs) * scale) / 1000) / speed);
+      const addBoundaries = (meta.addFires || []).map((f) => ({ execId: f.execId, clipSec: toClipSec(f.atMs) }));
+      const actionsEndSec = toClipSec(meta.lastFireMs || meta.endMs);
+      const clipDurationSec = Math.max(0, ((endMs - startMs) / 1000) / speed);
+      const sfxCues = [...(meta.eventFires || []), ...(meta.zoomCues || [])]
+        .map((e) => ({ type: e.type, clipSec: toClipSec(e.atMs) }))
+        .filter((c) => c.clipSec >= 0 && c.clipSec <= clipDurationSec + 0.5)
+        .sort((a, b) => a.clipSec - b.clipSec);
+      results.push({ ...meta, startMs, endMs, clip, status: 'ok', addBoundaries, actionsEndSec, clipDurationSec, sfxCues });
       log.ok(`  scenes/${meta.id}.mp4`);
     } catch (err) {
       results.push({ ...meta, startMs, endMs, clip, status: 'failed', error: err.message });

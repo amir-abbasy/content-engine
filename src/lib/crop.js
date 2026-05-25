@@ -14,13 +14,14 @@ import path from 'node:path';
 import { FFMPEG, FFPROBE } from '../config.js';
 import { easeFFmpeg } from './humanize.js';
 
-function run(bin, args) {
+export function run(bin, args) {
   return new Promise((resolve, reject) => {
     const proc = spawn(bin, args, { windowsHide: true });
     let stderr = '';
     let stdout = '';
-    proc.stdout.on('data', (d) => { stdout += d; });
-    proc.stderr.on('data', (d) => { stderr += d; });
+    const CAP = 256 * 1024; // bound capture — a runaway process can emit GBs
+    proc.stdout.on('data', (d) => { stdout += d; if (stdout.length > CAP) stdout = stdout.slice(-CAP); });
+    proc.stderr.on('data', (d) => { stderr += d; if (stderr.length > CAP) stderr = stderr.slice(-CAP); });
     proc.on('error', (err) => {
       reject(new Error(`Failed to start ${bin}: ${err.message}. Is it on PATH?`));
     });

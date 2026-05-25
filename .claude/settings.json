@@ -43,7 +43,11 @@
       "Bash(node --check src/record.js)",
       "Bash(cd \"output/algo-trading-reel-01-2026-05-21_18-51-29\")",
       "Bash(node -e \"let d=JSON.parse\\(require\\('fs'\\).readFileSync\\('manifest.json'\\)\\); let s=d.scenes[0]; console.log\\('status:',s.status,'| startMs:',Math.round\\(s.startMs\\),'| endMs:',Math.round\\(s.endMs\\),'| raw:',d.rawDurationSec\\); if\\(s.error\\)console.log\\('ERR:',s.error.slice\\(0,200\\)\\)\")",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(cd d:/Absy/web/content-engine && sed -n '/RangeError/,+15p' \"C:/Users/AKHOUS~1/AppData/Local/Temp/claude/d--Absy-web-content-engine/a9aea9af-b8b7-4c2d-bf99-fb3bf4018297/tasks/bza0r15xi.output\" | head -25; echo \"=== context before error ===\"; grep -nE \"\\\\[produce\\\\]|composing|joining|gif|build reel|chart-reveal\" \"C:/Users/AKHOUS~1/AppData/Local/Temp/claude/d--Absy-web-content-engine/a9aea9af-b8b7-4c2d-bf99-fb3bf4018297/tasks/bza0r15xi.output\" | tail -12)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\AKHOUS~1\\AppData\\Local\\Temp\\claude\\d--Absy-web-content-engine\\a9aea9af-b8b7-4c2d-bf99-fb3bf4018297\\tasks"
     ]
   }
 }

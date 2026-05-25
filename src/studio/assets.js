@@ -33,6 +33,16 @@ function authoredDurationSec(scene) {
   return (scene.durationSec || 0) + (scene.holdAfterSec || 0);
 }
 
+// First <sceneId>.vo.<ext> in a scenes dir, preferring common audio formats.
+const VO_EXTS = ['m4a', 'mp3', 'wav', 'ogg', 'aac', 'opus'];
+function findVoiceover(scenesDir, sceneId) {
+  for (const ext of VO_EXTS) {
+    const p = path.join(scenesDir, `${sceneId}.vo.${ext}`);
+    if (exists(p)) return p;
+  }
+  return null;
+}
+
 // ── Project resolution ───────────────────────────────────────────────────
 // Given a project id, return where its pipeline + output live. A flow project
 // (flows/<id>/pipeline.json present) wins; otherwise it's a legacy run dir
@@ -138,7 +148,9 @@ export function loadProject(id) {
     const clipAbs = path.join(proj.outDir, 'scenes', `${scene.id}.mp4`);
     const clipFromManifest = ms && ms.clip && exists(ms.clip) ? ms.clip : null;
     const clip = exists(clipAbs) ? clipAbs : clipFromManifest;
-    const audioAbs = path.join(proj.outDir, 'scenes', `${scene.id}.vo.m4a`);
+    // Voiceover audio (from `npm run vo`): accept whatever format ElevenLabs
+    // served — first matching <id>.vo.<ext> wins.
+    const audioAbs = findVoiceover(path.join(proj.outDir, 'scenes'), scene.id);
 
     let status;
     if (ms && ms.status) status = ms.status;
@@ -151,7 +163,7 @@ export function loadProject(id) {
       status,
       error: (ms && ms.error) || null,
       clipUrl: mediaUrl(clip),
-      audioUrl: mediaUrl(exists(audioAbs) ? audioAbs : null),
+      audioUrl: mediaUrl(audioAbs),
       authoredDurationSec: durationSec,
       startSec,
       target: scene.target,

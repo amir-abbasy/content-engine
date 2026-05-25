@@ -1,0 +1,61 @@
+{
+  "_comment": "Node Semantics Catalog. Per nodeKey: a plain-finance meaning + a param gloss. The AI planner reads this (alongside StrategyFacts) to turn an IR node into accurate narration, instead of guessing what an indicator does. `paramGloss` maps a param name to a short phrase the planner can weave in.",
+  "ohlcv.data": {
+    "name": "Candles",
+    "meaning": "Loads the raw OHLCV price history — the candle data every strategy reads from.",
+    "category": "data",
+    "paramGloss": { "length": "the number of candles loaded" }
+  },
+  "ta.macd": {
+    "name": "MACD",
+    "meaning": "Moving Average Convergence Divergence — tracks momentum by comparing a fast and a slow moving average, with a signal line for crossovers.",
+    "category": "indicator",
+    "paramGloss": {
+      "fast": "the fast EMA period",
+      "slow": "the slow EMA period",
+      "signal": "the signal-line period"
+    }
+  },
+  "ta.ema": {
+    "name": "EMA",
+    "meaning": "Exponential Moving Average — a trend line that weights recent prices more heavily.",
+    "category": "indicator",
+    "paramGloss": { "length": "the lookback period" }
+  },
+  "ta.rsi": {
+    "name": "RSI",
+    "meaning": "Relative Strength Index — an oscillator from 0-100 that flags overbought and oversold conditions.",
+    "category": "indicator",
+    "paramGloss": { "length": "the lookback period" }
+  },
+  "crossover": {
+    "name": "Crossover",
+    "meaning": "Fires when the first input crosses ABOVE the second — a classic bullish trigger.",
+    "category": "signal",
+    "paramGloss": { "threshold": "the level being crossed" }
+  },
+  "crossunder": {
+    "name": "Crossunder",
+    "meaning": "Fires when the first input crosses BELOW the second — a classic bearish trigger.",
+    "category": "signal",
+    "paramGloss": { "threshold": "the level being crossed" }
+  },
+  "np.greater": {
+    "name": "Greater Than",
+    "meaning": "True while the first input is greater than the second.",
+    "category": "logic",
+    "paramGloss": {}
+  },
+  "np.less": {
+    "name": "Less Than",
+    "meaning": "True while the first input is less than the second.",
+    "category": "logic",
+    "paramGloss": {}
+  },
+  "plot": {
+    "name": "Plot",
+    "meaning": "Draws a series onto the chart so its behaviour is visible.",
+    "category": "output",
+    "paramGloss": { "color": "the line colour" }
+  }
+}

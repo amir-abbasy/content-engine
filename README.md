@@ -160,6 +160,58 @@ Record / export / timeline-editing are staged for later phases. Backed by
 
 ---
 
+## Voiceover & emotion GIFs (generated assets)
+
+Two asset generators read a flow's authoring and produce per-scene media that
+the Studio (and, later, the export) consumes. Both mirror the same provider
+shape and key off the flow.
+
+### Voiceover — `npm run vo <flow>`
+
+Per-scene narration audio. Lines come from `flows/<flow>/voiceover.txt` (one
+line per scene, in order). Voice engine: ElevenLabs when signed in (one-time
+`npm run vo --login`, captured to `.eleven-auth.json`), else an offline voice.
+Writes `output/<flow>/scenes/<scene-id>.vo.<ext>` (+ a `.vo.json` timing
+sidecar). See `src/lib/tts.js` / `src/lib/elevenlabs.js`.
+
+### Emotion GIFs — `npm run gif <flow>`
+
+Emotion stickers/gifs pulled from GIPHY (no login/captcha) and placed as
+overlays. Markers are authored in `flows/<flow>/content-plan.json` — typically
+by the LLM that writes the plan:
+
+```jsonc
+"build": {
+  "voiceoverSegments": [
+    { "line": "…", "actionRef": "ta_macd", "emotion": "focus",
+      // attach to this narration beat — string, object, or array of objects:
+      "gif": { "search": "momentum chart", "sticker": true, "position": "top-right", "durationSec": 1.8 } }
+  ],
+  "gifs": [   // optional standalone overlays (intro hook / outro CTA)
+    { "id": "outro-cta", "search": "follow for more", "scene": "macd-strategy", "at": 40, "durationSec": 2, "position": "center" }
+  ]
+}
+```
+
+Marker fields: `search` (the query — the "context"), `sticker` (default true;
+honored only by the API engine — the website engine returns query-specific but
+OPAQUE gifs, since GIPHY serves a generic grid to the sticker scraper),
+`position` (`top-left|top-right|bottom-left|bottom-right|center|…`),
+`durationSec`, `at` (explicit time; per-beat markers default to the beat's
+start), optional `scale` / `id`. For each marker the generator searches GIPHY,
+makes a **seeded** random pick from the top results, downloads to
+`output/<flow>/assets/gifs/<id>.<ext>`, and records the choice in `gifs.json`
+so reruns are stable (`--reroll` repicks). Flags: `--reroll`, `--format
+gif|webp|mp4`, `--no-sticker`, `--api` (GIPHY_API_KEY), `--headed`, `--dry-run`,
+`--scene <id>`. See `src/lib/giphy.js`.
+
+**`npm run produce <flow>` overlays them automatically** — it regenerates the
+gifs (via the lock, so it's fast/stable) and the compositor places each one on
+the **paced** timeline: per-beat markers anchor to their narration beat's start,
+sized as ~28%-width corner reactions by `position`. Skip with `--no-gifs`.
+
+---
+
 ## The pipeline file
 
 `pipeline.json` is the timeline. `pipeline.schema.json` is the authoritative

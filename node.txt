@@ -6,3 +6,12 @@ target
 radar
 loading
 focus
+
+
+
+npm run produce macd --voice Alex
+
+npm run produce macd            # voice + SFX (full reel)
+npm run produce macd --mute     # SFX only, no voice (fast test — what I just ran)
+npm run produce macd --no-sfx   # disable SFX
+npm run produce macd --no-gifs   # skip overlays

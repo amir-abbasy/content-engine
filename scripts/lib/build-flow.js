@@ -179,6 +179,57 @@ export function buildFlow(cfg = getStrategy()) {
   return { nodes, baked, dragged, baseIds, addedIds, remap };
 }
 
+// ── Semantic Anchor Table ───────────────────────────────────────────────────
+// The bridge from the AI's content layer to the deterministic execution layer.
+// A ContentPlan references a node by a STABLE, human-meaningful `semanticId`
+// (e.g. "macd_node", "plot_1") — never the volatile renumbered execId. This
+// table resolves each semanticId to its execId + the facts narration needs
+// (label + params), so the compiler can:
+//   • bind every `actionRef` to the real node (failing loudly if it can't), and
+//   • feed the planner real values ("MACD with 12, 26, 9").
+// Derived purely from buildFlow()'s output — no parallel source of truth.
+const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+
+// The numeric/colour settings a node carries, mirroring configSteps()'s reading
+// of flow data so the anchor's params match exactly what gets typed on camera.
+function anchorParams(d) {
+  const iv = d.inputValues || {};
+  const params = {};
+  const ints = (d.Inputs || []).filter((i) => i.type === 'int');
+  for (const inp of ints) {
+    const v = iv[inp.name] ?? iv[String((d.Inputs || []).indexOf(inp))] ?? inp.default;
+    if (v != null) params[inp.name] = v;
+  }
+  if ((d.nodeKey === 'crossover' || d.nodeKey === 'crossunder')) {
+    const v = iv['1'] ?? d.Inputs?.[1]?.default;
+    if (v != null) params.threshold = v;
+  }
+  if (d.isPlotNode && d.plotConfig?.color) params.color = String(d.plotConfig.color).toLowerCase();
+  return params;
+}
+
+export function semanticAnchors(build) {
+  const nodes = build.nodes;
+  // Count each base slug first so we only add an ordinal when it's ambiguous.
+  const bases = nodes.map((n) => slugify(n.data.nodeKey || n.data.Name));
+  const total = {};
+  for (const b of bases) total[b] = (total[b] || 0) + 1;
+  const seen = {};
+  return nodes.map((n, i) => {
+    const d = n.data;
+    const base = bases[i];
+    seen[base] = (seen[base] || 0) + 1;
+    const semanticId = total[base] > 1 ? `${base}_${seen[base]}` : base;
+    return {
+      semanticId,
+      nodeKey: d.nodeKey,
+      label: d.Name,
+      execId: n.id,           // renumbered 1..N id the execution layer uses
+      params: anchorParams(d), // values shown on camera (for narration)
+    };
+  });
+}
+
 // Port + node label helpers (for human-readable logging / search text).
 export const nameOf = (nodes, id) => nodes.find((n) => n.id === id)?.data.Name;
 export const portName = (nodes, id, h, kind) => {

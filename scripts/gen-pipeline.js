@@ -176,12 +176,32 @@ if (CONFIG.mode === 'single') {
     autoCamera: true,
     tracks: { input, ...(attention.length ? { attention } : {}) },
   };
+  // After the build runs, switch from the node editor (Shift+2) back to the
+  // chart view (Shift+1) — the executed plots persist across the toggle in the
+  // same session — and drag the chart back a little to reveal the result.
+  const chartScene = {
+    id: 'chart-reveal',
+    description: `Reveal the chart with the plotted ${FLOW.toUpperCase()} result after running the strategy.`,
+    target: { selector: '#main-chart', aspect: '9:16', anchor: 'center' },
+    setup: [{ at: 0.0, type: 'press', key: 'Digit1', shift: true }],
+    durationSec: 6.0,
+    holdAfterSec: 1.0,
+    autoCamera: false,
+    tracks: {
+      input: [
+        // Pan the chart into the PAST: grab the plot area and drag RIGHTWARD so
+        // older bars scroll in from the left (dragging left would chase the newest
+        // bars — you're already there, so nothing moves). A wide, centred drag.
+        { at: 1.4, type: 'drag', point: { x: 950, y: 540 }, to: { x: 1550, y: 540 } },
+      ],
+    },
+  };
   const pipeline = {
     name: `${FLOW}-strategy-reel`,
     app: template.app,
     record: template.record,
     output: template.output,
-    scenes: [scene],
+    scenes: [scene, chartScene],
   };
   writeFileSync(outPath, serialize(pipeline) + '\n');
   console.log(`wrote ${CONFIG.pipelineOut} (single-scene build)`);

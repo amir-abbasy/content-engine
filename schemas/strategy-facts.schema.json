@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "strategy-facts.schema.json",
+  "title": "StrategyFacts",
+  "description": "Layer 0 artifact. Everything the AI planner is allowed to treat as TRUE about a strategy: its node graph (IR), the Semantic Anchor Table (semanticId -> execId + params), and REAL backtest metrics captured from a headless probe run. The planner must narrate only from these facts; it never invents numbers.",
+  "type": "object",
+  "required": ["flow", "anchors"],
+  "additionalProperties": false,
+  "properties": {
+    "flow": { "type": "string" },
+    "generatedAt": { "type": "string" },
+    "anchors": {
+      "type": "array",
+      "description": "The Semantic Anchor Table — output of semanticAnchors(buildFlow()).",
+      "items": {
+        "type": "object",
+        "required": ["semanticId", "nodeKey", "execId"],
+        "additionalProperties": false,
+        "properties": {
+          "semanticId": { "type": "string" },
+          "nodeKey": { "type": "string" },
+          "label": { "type": "string" },
+          "execId": { "type": "string" },
+          "params": { "type": "object", "description": "On-camera settings (ints/threshold/colour) for narration." }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Captured from the probe run. Absent until the probe exists; the planner degrades to qualitative narration when missing.",
+      "additionalProperties": false,
+      "properties": {
+        "winrate": { "type": "number" },
+        "profitFactor": { "type": "number" },
+        "drawdown": { "type": "number" },
+        "totalReturn": { "type": "number" },
+        "trades": { "type": "integer" },
+        "sharpe": { "type": "number" }
+      }
+    }
+  }
+}

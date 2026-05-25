@@ -22,7 +22,7 @@ import { createGifSource } from '../src/lib/giphy.js';
 import { log } from '../src/lib/log.js';
 
 const DEFAULT_DURATION_SEC = 2.0;
-const DEFAULT_POSITION = 'top-right';
+const DEFAULT_POSITION = 'bottom-center';
 const TOP_K = 20; // pick from the top N results (relevance-ordered)
 
 function parseArgs(argv) {

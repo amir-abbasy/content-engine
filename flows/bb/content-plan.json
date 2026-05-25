@@ -1,0 +1,44 @@
+{
+  "video": {
+    "flow": "bb",
+    "title": "Bollinger Bands Build",
+    "tone": "focus"
+  },
+  "build": {
+    "voiceoverSegments": [
+      {
+        "line": "We start by loading the last 1000 candles, giving us the full price history to work with.",
+        "actionRef": "ohlcv_data",
+        "emotion": "calm"
+      },
+      {
+        "line": "Next we apply a 10‑period Wilder’s Moving Average to smooth the data.",
+        "actionRef": "ta_rma",
+        "emotion": "focus"
+      },
+      {
+        "line": "Then we calculate Bollinger Bands using a 20‑period basis for the bands.",
+        "actionRef": "ta_bbands",
+        "emotion": "excited"
+      },
+      {
+        "line": "We plot the middle band in a bright blue (#3b82f6) so it’s easy to see.",
+        "actionRef": "plot_1",
+        "emotion": "precision"
+      },
+      {
+        "line": "Next we draw the upper band in a soft teal (rgba 187,247,208,1) for contrast.",
+        "actionRef": "plot_2",
+        "emotion": "calm"
+      },
+      {
+        "line": "Finally we fill the space between the bands with a light teal at 27% opacity.",
+        "actionRef": "plot_band",
+        "emotion": "focus"
+      }
+    ],
+    "outro": {
+      "voiceover": "Now the chart shows Bollinger Bands plotted and filled, ready to backtest."
+    }
+  }
+}

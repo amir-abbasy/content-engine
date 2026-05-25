@@ -1,0 +1,69 @@
+{
+  "video": {
+    "flow": "rsi",
+    "title": "RSI Strategy Build",
+    "tone": "focus"
+  },
+  "build": {
+    "voiceoverSegments": [
+      {
+        "line": "We start by loading the last 1,000 candles, giving the strategy its full price history to work from.",
+        "actionRef": "ohlcv_data",
+        "emotion": "calm"
+      },
+      {
+        "line": "Next we calculate a 14‑period RSI, the classic oscillator that swings between 0 and 100 to spot extremes.",
+        "actionRef": "ta_rsi",
+        "emotion": "focus"
+      },
+      {
+        "line": "We add a red horizontal line that will act as our overbought reference on the chart.",
+        "actionRef": "plot_hline_1",
+        "emotion": "precision"
+      },
+      {
+        "line": "A crossunder triggers when the RSI falls below 70, signalling a bearish shift in momentum.",
+        "actionRef": "crossunder",
+        "emotion": "focus"
+      },
+      {
+        "line": "We plot the RSI series in blue so its movements are clearly visible on the chart.",
+        "actionRef": "plot",
+        "emotion": "calm"
+      },
+      {
+        "line": "A crossover fires when the RSI climbs above 30, marking a bullish reversal signal.",
+        "actionRef": "crossover",
+        "emotion": "excited"
+      },
+      {
+        "line": "We add a green horizontal line at the 30 level to highlight the oversold boundary.",
+        "actionRef": "plot_hline_2",
+        "emotion": "precision"
+      },
+      {
+        "line": "We place green shape markers on the chart each time a bullish crossover occurs.",
+        "actionRef": "plot_shape_1",
+        "emotion": "focus"
+      },
+      {
+        "line": "Red shape markers appear whenever the RSI crossunder signals a bearish entry.",
+        "actionRef": "plot_shape_2",
+        "emotion": "excited"
+      },
+      {
+        "line": "We then run the strategy through the backtest engine, generating a complete trade ledger and performance metrics.",
+        "actionRef": "strategy_run",
+        "emotion": "calm"
+      },
+      {
+        "line": "Finally we plot the trades themselves, overlaying entry and exit markers so the strategy’s actions are visible.",
+        "actionRef": "plot_trades",
+        "emotion": "focus"
+      }
+    ],
+    "outro": {
+      "voiceover": "Now the chart shows the RSI with its overbought and oversold lines, bullish and bearish signals, and the plotted trades, ready to backtest."
+    }
+  }
+}

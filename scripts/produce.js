@@ -13,6 +13,16 @@ import { ROOT, buildFlow, getStrategy, semanticAnchors } from './lib/build-flow.
 import { createVoice, login, estimate } from '../src/lib/tts.js';
 import { composeReel, composeSimple, concatClips } from '../src/lib/compose.js';
 
+// Load local API keys (.env) so auto-planning can see OPENROUTER/ANTHROPIC keys.
+(function loadEnv() {
+  const p = path.resolve(ROOT, '.env');
+  if (!fs.existsSync(p)) return;
+  for (const line of fs.readFileSync(p, 'utf8').split(/\r?\n/)) {
+    const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+  }
+})();
+
 // Saved ElevenLabs session (shared with `npm run vo`) — enables the high-quality
 // signed-in voice; without it produce falls back to the offline SAPI voice.
 const AUTH_FILE = path.join(ROOT, '.eleven-auth.json');
@@ -51,7 +61,17 @@ async function main() {
   const strat = getStrategy(flow);
   const outDir = path.resolve(ROOT, strat.outDir);
   const planPath = path.resolve(ROOT, `flows/${flow}/content-plan.json`);
-  if (!fs.existsSync(planPath)) throw new Error(`No ContentPlan at ${planPath}`);
+  // Auto-plan a brand-new flow: derive StrategyFacts, then let the AI planner
+  // write the ContentPlan. Needs ANTHROPIC_API_KEY; otherwise tell the user how
+  // to author one. An existing ContentPlan is used as-is (never overwritten).
+  if (!fs.existsSync(planPath)) {
+    if (!process.env.OPENROUTER_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+      throw new Error(`No ContentPlan at flows/${flow}/content-plan.json. Either author one, or set OPENROUTER_API_KEY / ANTHROPIC_API_KEY and re-run to auto-generate it (npm run gen:facts ${flow} && npm run plan ${flow}).`);
+    }
+    log('no ContentPlan — auto-planning (facts → AI planner)…');
+    await node(['scripts/gen-facts.js', flow]);
+    await node(['scripts/plan.js', flow]);
+  }
   const plan = JSON.parse(fs.readFileSync(planPath, 'utf8'));
 
   // 1 + 2: generate, then record at speed 1 (the compose stage does the pacing).

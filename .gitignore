@@ -4,3 +4,6 @@ studio/dist/
 .eleven-auth.json
 *.log
 .DS_Store
+
+# Local API keys (never commit)
+.env

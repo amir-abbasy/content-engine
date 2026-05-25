@@ -1,46 +1,39 @@
 {
   "video": {
     "flow": "macd",
-    "title": "Build a MACD Momentum Strategy",
-    "tone": "educational_cinematic",
-    "targetDurationSec": 45
+    "title": "MACD Strategy Build",
+    "tone": "focused"
   },
   "build": {
     "voiceoverSegments": [
       {
-        "line": "First, we load candle data — the raw price history our strategy reads from.",
+        "line": "We start by loading 1000 candles of price history, the foundation every strategy needs.",
         "actionRef": "ohlcv_data",
-        "emotion": "calm",
-        "gif": { "search": "stock market chart", "sticker": true, "position": "top-right", "durationSec": 1.8 }
-      },
-      {
-        "line": "Then we add the MACD indicator, set to twelve, twenty-six, and nine periods, to track momentum shifts.",
-        "actionRef": "ta_macd",
-        "emotion": "focus",
-        "gif": { "search": "rocket launch", "sticker": true, "position": "top-right", "durationSec": 2.0 }
-      },
-      {
-        "line": "We plot the MACD line so the momentum is visible on the chart.",
-        "actionRef": "plot_1",
         "emotion": "calm"
       },
       {
-        "line": "A second plot draws the signal line, so we can watch when it crosses above or below the MACD.",
+        "line": "Next we add a MACD with fast 12, slow 26 and signal 9 to track momentum via EMA crossovers.",
+        "actionRef": "ta_macd",
+        "emotion": "focus"
+      },
+      {
+        "line": "We plot the MACD line in a vivid blue so its movement is clear on the chart.",
+        "actionRef": "plot_1",
+        "emotion": "precision"
+      },
+      {
+        "line": "Then we overlay the signal line in the same blue to see where it meets the MACD.",
         "actionRef": "plot_2",
         "emotion": "calm"
       },
       {
-        "line": "And a third plots the histogram — the gap between the two.",
+        "line": "Finally we draw the histogram, the difference between MACD and signal, to visualize momentum shifts.",
         "actionRef": "plot_3",
-        "emotion": "focus",
-        "gif": { "search": "mind blown", "sticker": true, "position": "top-left", "durationSec": 1.8 }
+        "emotion": "excited"
       }
-    ],
-    "gifs": [
-      { "id": "outro-cta", "search": "follow for more", "scene": "macd-strategy", "at": 44, "durationSec": 2.2, "position": "center" }
     ]
   },
   "outro": {
-    "voiceover": "And there it is — the MACD plotted live on the chart, ready to backtest."
+    "voiceover": "You now see the MACD line, signal line and histogram plotted in blue, ready to backtest."
   }
 }

@@ -1,0 +1,72 @@
+{
+  "flow": "bb",
+  "generatedAt": "2026-05-25T15:15:22.136Z",
+  "anchors": [
+    {
+      "semanticId": "ohlcv_data",
+      "nodeKey": "ohlcv.data",
+      "label": "Candles",
+      "meaning": "Get OHLCV trading data with multiple outputs",
+      "category": "Data Source",
+      "execId": "1",
+      "params": {
+        "length": 1000
+      }
+    },
+    {
+      "semanticId": "ta_rma",
+      "nodeKey": "ta.rma",
+      "label": "RMA",
+      "meaning": "Wilders's Moving Average",
+      "category": "Overlap",
+      "execId": "2",
+      "params": {
+        "length": 10
+      }
+    },
+    {
+      "semanticId": "ta_bbands",
+      "nodeKey": "ta.bbands",
+      "label": "BBANDS",
+      "meaning": "Bollinger Bands",
+      "category": "Volatility",
+      "execId": "3",
+      "params": {
+        "length": 20
+      }
+    },
+    {
+      "semanticId": "plot_1",
+      "nodeKey": "plot",
+      "label": "Plot",
+      "meaning": "Plot series with full styling control (line, area, histogram, columns, cross, circles, stepline)",
+      "category": "Plot",
+      "execId": "4",
+      "params": {
+        "color": "#3b82f6"
+      }
+    },
+    {
+      "semanticId": "plot_2",
+      "nodeKey": "plot",
+      "label": "Plot",
+      "meaning": "Plot series with full styling control (line, area, histogram, columns, cross, circles, stepline)",
+      "category": "Plot",
+      "execId": "5",
+      "params": {
+        "color": "rgba(187, 247, 208, 1)"
+      }
+    },
+    {
+      "semanticId": "plot_band",
+      "nodeKey": "plot.band",
+      "label": "Fill",
+      "meaning": "Fill area between two series (Bollinger Bands, Ichimoku Cloud, any upper/lower pair)",
+      "category": "Plot",
+      "execId": "6",
+      "params": {
+        "color": "rgba(187, 247, 208, 0.27)"
+      }
+    }
+  ]
+}

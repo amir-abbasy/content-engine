@@ -12,6 +12,8 @@
     "gen:pipeline": "node scripts/gen-pipeline.js",
     "gen": "node scripts/gen.js",
     "flow": "node scripts/flow.js",
+    "gen:facts": "node scripts/gen-facts.js",
+    "plan": "node scripts/plan.js",
     "produce": "node scripts/produce.js",
     "vo": "node scripts/gen-voiceover.js",
     "gif": "node scripts/gen-gifs.js",
@@ -23,6 +25,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.98.0",
     "playwright": "^1.49.0"
   },
   "devDependencies": {

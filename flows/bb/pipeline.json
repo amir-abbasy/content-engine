@@ -118,6 +118,22 @@
           {"at":62.2,"type":"mark","selector":".react-flow__node[data-id=\"6\"] .aspect-square","padding":4,"durationMs":1200}
         ]
       }
+    },
+    {
+      "id": "chart-reveal",
+      "description": "Reveal the chart with the plotted BB result after running the strategy.",
+      "target": {"selector":"#main-chart","aspect":"9:16","anchor":"center"},
+      "setup": [
+        {"at":0,"type":"press","key":"Digit1","shift":true}
+      ],
+      "durationSec": 6,
+      "holdAfterSec": 1,
+      "autoCamera": false,
+      "tracks": {
+        "input": [
+          {"at":1.4,"type":"drag","point":{"x":950,"y":540},"to":{"x":1550,"y":540}}
+        ]
+      }
     }
   ]
 }

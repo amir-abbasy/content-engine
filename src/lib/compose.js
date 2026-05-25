@@ -86,6 +86,9 @@ const POS_EXPR = (margin) => ({
   center: `(W-w)/2:(H-h)/2`,
   top: `(W-w)/2:${margin}`,
   bottom: `(W-w)/2:H-h-${margin}`,
+  // Centered horizontally, sitting near the bottom but raised 20% of the frame
+  // height off the bottom edge (the default placement for emotion gifs).
+  'bottom-center': `(W-w)/2:H*0.8-h`,
 });
 
 // Resolve GIF markers onto the PACED timeline. Per-beat markers anchor to their
@@ -100,7 +103,7 @@ function resolveGifOverlays(gifs, { subBeats, totalMs, remapMs }) {
     const startSec = beat ? (beat.startMs + 120) / 1000
       : Math.max(0, Math.min(g.at != null ? remapMs(g.at) / 1000 : 0, totalSec - 0.4));
     const endSec = Math.min(totalSec, startSec + (g.durationSec || 2));
-    return { file: g.file, startSec, endSec, position: g.position || 'top-right', scale: g.scale || 0.28 };
+    return { file: g.file, startSec, endSec, position: g.position || 'bottom-center', scale: g.scale || 0.6 };
   }).filter((o) => o.file && fs.existsSync(o.file) && o.endSec > o.startSec);
 }
 

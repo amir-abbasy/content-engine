@@ -1,0 +1,53 @@
+{
+  "flow": "macd",
+  "generatedAt": "2026-05-25T13:37:50.786Z",
+  "anchors": [
+    {
+      "semanticId": "ohlcv_data",
+      "nodeKey": "ohlcv.data",
+      "label": "Candles",
+      "execId": "1",
+      "params": {
+        "length": 1000
+      }
+    },
+    {
+      "semanticId": "ta_macd",
+      "nodeKey": "ta.macd",
+      "label": "MACD",
+      "execId": "2",
+      "params": {
+        "fast": "12",
+        "slow": "26",
+        "signal": "9"
+      }
+    },
+    {
+      "semanticId": "plot_1",
+      "nodeKey": "plot",
+      "label": "Plot",
+      "execId": "3",
+      "params": {
+        "color": "#3b82f6"
+      }
+    },
+    {
+      "semanticId": "plot_2",
+      "nodeKey": "plot",
+      "label": "Plot",
+      "execId": "4",
+      "params": {
+        "color": "#3b82f6"
+      }
+    },
+    {
+      "semanticId": "plot_3",
+      "nodeKey": "plot",
+      "label": "Plot",
+      "execId": "5",
+      "params": {
+        "color": "#3b82f6"
+      }
+    }
+  ]
+}

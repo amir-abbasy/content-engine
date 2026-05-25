@@ -224,6 +224,9 @@ export function semanticAnchors(build) {
       semanticId,
       nodeKey: d.nodeKey,
       label: d.Name,
+      meaning: d.Description || '', // the flow's OWN one-line description — narration seed,
+                                    // so every node self-describes regardless of the catalog
+      category: d.Type || '',       // platform category (Momentum, Plot, PineScript, …)
       execId: n.id,           // renumbered 1..N id the execution layer uses
       params: anchorParams(d), // values shown on camera (for narration)
     };

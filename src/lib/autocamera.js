@@ -172,5 +172,35 @@ export function buildAutoCamera(inputEvents, cfg = {}) {
 
     prevRestSel = isDrag ? (first.focusSelector || restSel) : restSel;
   });
+  // Back-to-back hotspot sessions (e.g. drag-connect ending right before the
+  // next palette open) used to emit zoomOut → restZoom → zoomIn within ~1.5s,
+  // bouncing the camera. We collapse those brief rest runs by lifting the
+  // intermediate rest keyframes UP to the surrounding zoom level, so the
+  // camera glides between hotspots while staying zoomed. Visual flutter +
+  // the parasitic zoomIn/zoomOut SFX cues (derived from these keyframes in
+  // record.js) both disappear because dz becomes 0 across the lifted run.
+  // 3500ms covers the typical drag→palette gap (~2700ms plan-time, perceived
+  // as back-to-back after per-beat speed compression). Anything wider is a
+  // genuine pause and gets a real wide-view rest. Tune via cfg.bounceMergeMs.
+  return smoothBackToBackBounces(kfs, restZoom, cfg.bounceMergeMs ?? 3500);
+}
+
+function smoothBackToBackBounces(kfs, restZoom, mergeMs) {
+  if (kfs.length < 4) return kfs;
+  const isRest = (kf) => (kf.zoom || 1) <= restZoom + 0.05;
+  const zoomedIdx = [];
+  kfs.forEach((kf, i) => { if (!isRest(kf)) zoomedIdx.push(i); });
+  if (zoomedIdx.length < 2) return kfs;
+  for (let k = 0; k < zoomedIdx.length - 1; k++) {
+    const iA = zoomedIdx[k];
+    const iB = zoomedIdx[k + 1];
+    if (iB - iA <= 1) continue; // no rest run in between
+    const restDur = (kfs[iB].at - kfs[iA].at) * 1000;
+    if (restDur >= mergeMs) continue; // real gap — let the camera rest
+    const lift = Math.min(kfs[iA].zoom, kfs[iB].zoom);
+    for (let j = iA + 1; j < iB; j++) {
+      if (isRest(kfs[j])) kfs[j] = { ...kfs[j], zoom: lift };
+    }
+  }
   return kfs;
 }

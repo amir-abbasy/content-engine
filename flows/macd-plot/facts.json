@@ -1,0 +1,63 @@
+{
+  "flow": "macd-plot",
+  "generatedAt": "2026-05-30T08:24:20.165Z",
+  "anchors": [
+    {
+      "semanticId": "ohlcv_data",
+      "nodeKey": "ohlcv.data",
+      "label": "Candles",
+      "meaning": "Get OHLCV trading data with multiple outputs",
+      "category": "Data Source",
+      "execId": "1",
+      "params": {
+        "length": 1000
+      }
+    },
+    {
+      "semanticId": "ta_macd",
+      "nodeKey": "ta.macd",
+      "label": "MACD",
+      "meaning": "Moving Average Convergence Divergence",
+      "category": "Momentum",
+      "execId": "2",
+      "params": {
+        "fast": 12,
+        "slow": 26,
+        "signal": 9
+      }
+    },
+    {
+      "semanticId": "plot_1",
+      "nodeKey": "plot",
+      "label": "Plot",
+      "meaning": "Plot series with full styling control (line, area, histogram, columns, cross, circles, stepline)",
+      "category": "Plot",
+      "execId": "3",
+      "params": {
+        "color": "rgba(239, 68, 68, 1)"
+      }
+    },
+    {
+      "semanticId": "plot_2",
+      "nodeKey": "plot",
+      "label": "Plot",
+      "meaning": "Plot series with full styling control (line, area, histogram, columns, cross, circles, stepline)",
+      "category": "Plot",
+      "execId": "4",
+      "params": {
+        "color": "#3b82f6"
+      }
+    },
+    {
+      "semanticId": "plot_3",
+      "nodeKey": "plot",
+      "label": "Plot",
+      "meaning": "Plot series with full styling control (line, area, histogram, columns, cross, circles, stepline)",
+      "category": "Plot",
+      "execId": "5",
+      "params": {
+        "color": "#3b82f6"
+      }
+    }
+  ]
+}

@@ -73,7 +73,10 @@ function resolveSounds(dir) {
   map.drag = find(['drag', 'connect', 'wire', 'link', 'swoosh', 'whoosh']);
   map.fill = find(['type', 'typing', 'keypress', 'keys', 'fill']);
   map.zoomIn = find(['zoom-in', 'zoomin', 'zoom', 'whoosh', 'woosh', 'swoosh']);
-  map.zoomOut = find(['zoom-out', 'zoomout', 'zoom', 'whoosh', 'woosh', 'swoosh']);
+  // Zoom-out is intentionally silent. The transition-swoosh used to fire on every
+  // pull-back, which on busy scenes became a constant whoosh-whoosh-whoosh. Add a
+  // file named "zoom-out.*" to opt back in for a specific pull-back sound.
+  map.zoomOut = find(['zoom-out', 'zoomout']);
   return map;
 }
 

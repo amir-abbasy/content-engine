@@ -70,6 +70,7 @@ Rules for the build section:
 - Each line is ONE spoken sentence, ~12-22 words, conversational and concrete. Explain what the node does using its "meaning", and weave in its "params" (use "paramGloss" to phrase them when present, e.g. MACD's 12/26/9). Spell numbers as digits.
 - Vary sentence openings; it should sound like a person narrating, not a list.
 - emotion is a one-word mood tag (calm, focus, excited, precision, …).
+- Speak like a person, not a robot. NEVER read machine-readable literals out loud — no hex codes (#3b82f6), no rgb/rgba tuples (rgba(187,247,208,1)), no selectors, no pixel sizes, no raw enum values. If a param is a color, name the color in plain English (e.g. "#3b82f6" → "blue", "#14b8a6" → "teal", "#facc15" → "gold"); add a soft qualifier when helpful ("bright blue", "soft teal", "deep red") but never echo the literal value. If a param value has no natural spoken form, paraphrase it conversationally or omit it. Parentheticals quoting the literal (e.g. "blue (#3b82f6)") are FORBIDDEN.
 
 Rules for the outro:
 - One sentence describing what the viewer now sees on the chart (the plotted result), ending with a light forward nudge (e.g. ready to backtest).

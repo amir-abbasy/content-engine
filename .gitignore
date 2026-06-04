@@ -2,6 +2,7 @@ node_modules/
 output/
 studio/dist/
 .eleven-auth.json
+.chrome-profile/
 *.log
 .DS_Store
 

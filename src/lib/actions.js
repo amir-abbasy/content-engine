@@ -60,6 +60,36 @@ const HANDLE_RE = /\.react-flow__node\[data-id="([^"]+)"\]\s+\.react-flow__handl
 // So: try the exact id; if absent, pick the Nth handle of that kind (sorted by
 // index) — the same positional input the edge meant. Non-handle selectors fall
 // back to the normal box resolver.
+// React Flow renders ALL of a node's source handles (and ditto target handles)
+// at the same screen position (top: 50% with translateY(-50%)). They overlap
+// as a stack of 8x8 boxes. Without intervention, a mousedown at that position
+// hits whichever sibling is last in DOM order (highest z), not the handle we
+// actually want. Before a wire drag, we lift the requested handle's z-index
+// so the cursor's hit-test resolves to it; afterwards we restore so the DOM
+// is left untouched. Without this, dragging from `output-1` on a multi-output
+// node like STRATEGY.RUN silently connects from `output-5` (final_equity).
+async function liftHandle(page, sel) {
+  return page.evaluate((s) => {
+    const el = document.querySelector(s);
+    if (!el) return null;
+    return { z: el.style.zIndex || '' };
+  }, sel).then(async (prev) => {
+    if (!prev) return null;
+    await page.evaluate(({ s }) => {
+      const el = document.querySelector(s);
+      if (el) el.style.zIndex = '9999';
+    }, { s: sel });
+    return prev;
+  });
+}
+async function restoreHandle(page, sel, prev) {
+  if (!prev) return;
+  await page.evaluate(({ s, z }) => {
+    const el = document.querySelector(s);
+    if (el) el.style.zIndex = z;
+  }, { s: sel, z: prev.z });
+}
+
 async function resolveDragPoint(page, selector, ev) {
   const m = HANDLE_RE.exec(selector || '');
   if (!m) return resolveTargetPoint(page, { ...ev, selector });

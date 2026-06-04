@@ -50,6 +50,38 @@ const boxOf = (page, sel) =>
 //                    that makes BOTH fit inside the capture region (so the
 //                    connection is readable). Falls back to `focusSelector`.
 //   • `selector`   — a single element (+ optional position offset).
+// Convert a node's flow-coord position into a screen point using the LIVE
+// React Flow viewport transform. The recorder probes any currently rendered
+// node to derive the viewport's offset + scale (from the node's inline
+// `translate(px, py)` and its bounding rect), then projects the requested
+// flow-coords through the same affine. Self-correcting: works through layout
+// changes, post-execute pane resizes, and auto-layout repositioning — there
+// is no hard-coded FIT formula to drift out of sync.
+async function flowPosToScreen(page, flowPos) {
+  return page.evaluate(({ fx, fy }) => {
+    const probe = document.querySelector('.react-flow__node');
+    if (!probe) return null;
+    const m1 = /translate\(([\d.\-]+)px,\s*([\d.\-]+)px\)/.exec(probe.style.transform || '');
+    if (!m1) return null;
+    const probeFlowX = parseFloat(m1[1]);
+    const probeFlowY = parseFloat(m1[2]);
+    const probeRect = probe.getBoundingClientRect();
+    const vp = document.querySelector('.react-flow__viewport');
+    if (!vp) return null;
+    let scale = 1;
+    const m2 = /matrix\(([\d.\-eE]+),/.exec(getComputedStyle(vp).transform);
+    if (m2) scale = parseFloat(m2[1]);
+    // probeRect.x = viewport_offset_x + probeFlowX * scale  →  solve for offset
+    const offX = probeRect.x - probeFlowX * scale;
+    const offY = probeRect.y - probeFlowY * scale;
+    // Click at the centre of where the new node will appear (probe size as proxy).
+    return {
+      x: Math.round(offX + fx * scale + probeRect.width / 2),
+      y: Math.round(offY + fy * scale + probeRect.height / 2),
+    };
+  }, { fx: flowPos.x, fy: flowPos.y });
+}
+
 async function resolveCameraPoint(page, ev, captureBox) {
   if (ev.point) return { cx: ev.point.x, cy: ev.point.y };
   if (ev.framePair) {
@@ -69,6 +101,15 @@ async function resolveCameraPoint(page, ev, captureBox) {
       const zx = captureBox.width / ((x2 - x1) + 2 * pad);
       const zy = captureBox.height / ((y2 - y1) + 2 * pad);
       zoom = Math.max(0.3, Math.min(zx, zy)); // never below 0.3 (full-flow view)
+    }
+    // Wide-span drag fallback: if framing BOTH endpoints forces the camera to
+    // pull back below ~1.3× (e.g. wiring from a top-left source to a far-right
+    // node, or a tall vertical span), the camera ends up showing mostly empty
+    // canvas — looks like "wandering". Instead, park on the destination node
+    // (`focusSelector` is the target) and let the wire fly in from off-screen.
+    if (zoom != null && zoom < 1.3 && ev.focusSelector) {
+      const f = await boxOf(page, ev.focusSelector);
+      if (f) return { cx: f.x + f.width / 2, cy: f.y + f.height / 2 };
     }
     return { cx: (x1 + x2) / 2, cy: (y1 + y2) / 2, zoom };
   }
@@ -282,10 +323,24 @@ async function recordSession(pipeline, { headless, rawDir }) {
           log.warn(`  reveal track not yet implemented (event: ${ev.type || 'untyped'})`);
           return;
         }
-        // A context-menu add right-click fires at the measured centre of the
-        // node it will create, so the node lands exactly where it's shown.
-        if (ev.type === 'rightClick' && ev.addsNodeId != null && addCenters.has(String(ev.addsNodeId))) {
-          ev = { ...ev, point: addCenters.get(String(ev.addsNodeId)) };
+        // A context-menu add right-click fires at the spot where the new node
+        // will appear. Preference order:
+        //   1. Live-transform projection from flow-coord position (BEST — uses
+        //      the current viewport transform, so it stays accurate as nodes
+        //      are added; no stale-cache drift). Needs a rendered probe node,
+        //      so it skips for the very first add.
+        //   2. Pre-measured centre from the scene-start full-flow probe.
+        //   3. Static FIT formula in `ev.position` (last resort).
+        // The previous order preferred the probe; but when React Flow auto-fits
+        // differently for empty vs full canvas, the probe's coords drift
+        // mid-build and later right-clicks miss the pane.
+        if (ev.type === 'rightClick' && ev.addsNodeId != null) {
+          let resolved = null;
+          if (ev.flowPos) resolved = await flowPosToScreen(page, ev.flowPos);
+          if (!resolved && addCenters.has(String(ev.addsNodeId))) {
+            resolved = addCenters.get(String(ev.addsNodeId));
+          }
+          if (resolved) ev = { ...ev, point: resolved };
         }
         // input track — also handle cameraFollow side-effect.
         if (ev.cameraFollow) {
@@ -451,6 +506,64 @@ async function main() {
     }
     pipeline.scenes = [picked];
     log.info(`Scene filter: recording only "${picked.id}"`);
+  }
+
+  // skip-until=N: seed the first N nodes as already-built (via injectFlow with
+  // nodeCount: N — which also seeds the edges among them) and drop their add /
+  // settings / inter-node-drag events from the input track. Drags whose TARGET
+  // is a new node (i.e. > N) are kept so they still wire on camera. The
+  // remaining events are time-shifted so the first kept event lands near 0.8s
+  // instead of leaving a long dead-time at the start. The full-flow PROBE
+  // injectFlow at the very start (used for addCenters measurement) is left
+  // untouched. For fast iteration on later nodes only.
+  const skipUntil = cli.skipUntil ?? numOpt(process.env.RECORD_SKIP_UNTIL);
+  if (skipUntil && skipUntil > 0) {
+    const skipSet = new Set();
+    for (let i = 1; i <= skipUntil; i++) skipSet.add(i);
+    const handleId = (sel) => {
+      const m = /\.react-flow__node\[data-id="(\d+)"\]/.exec(sel || '');
+      return m ? Number(m[1]) : null;
+    };
+    for (const scene of pipeline.scenes) {
+      // Bump the SEED inject's nodeCount so the canvas starts with nodes 1..N.
+      // The seed inject is the one that explicitly carries a `nodeCount`; the
+      // earlier `injectFlow` without `nodeCount` is the full-flow probe and
+      // stays as-is.
+      scene.setup = (scene.setup || []).map((e) =>
+        (e.type === 'injectFlow' && e.nodeCount !== undefined)
+          ? { ...e, nodeCount: skipUntil }
+          : e,
+      );
+      const tracks = scene.tracks || {};
+      const keep = (ev) => {
+        if (ev.type === 'rightClick' && ev.addsNodeId != null && skipSet.has(Number(ev.addsNodeId))) return false;
+        if (ev.focusSession != null && skipSet.has(Number(ev.focusSession))) return false;
+        if (ev.type === 'drag') {
+          const s = handleId(ev.selector), t = handleId(ev.toSelector);
+          if (s != null && t != null && skipSet.has(s) && skipSet.has(t)) return false;
+        }
+        return true;
+      };
+      const filteredInput = (tracks.input || []).filter(keep);
+      const filteredAttn = (tracks.attention || []).filter((e) => {
+        const id = handleId(e.selector);
+        return id == null || !skipSet.has(id);
+      });
+      // Compress the dead-time at the start: shift everything so the first
+      // surviving event lands at ~0.8s (matching the original first-add beat).
+      const firstAt = Math.min(...filteredInput.map((e) => e.at ?? 0));
+      const shift = Number.isFinite(firstAt) ? Math.max(0, firstAt - 0.8) : 0;
+      if (shift > 0) {
+        for (const ev of filteredInput) ev.at = Math.max(0, (ev.at ?? 0) - shift);
+        for (const ev of filteredAttn) ev.at = Math.max(0, (ev.at ?? 0) - shift);
+        if (typeof scene.durationSec === 'number') scene.durationSec = Math.max(2, scene.durationSec - shift);
+      }
+      tracks.input = filteredInput;
+      if (filteredAttn.length) tracks.attention = filteredAttn;
+      else delete tracks.attention;
+      scene.tracks = tracks;
+    }
+    log.info(`skip-until=${skipUntil}: seeded ${skipUntil} node(s); kept ${pipeline.scenes[0]?.tracks?.input?.length ?? 0} input event(s) in first scene`);
   }
 
   // Speed-up controls: CLI flag > env var > pipeline.json > built-in default.

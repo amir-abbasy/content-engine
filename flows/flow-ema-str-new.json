@@ -4,8 +4,8 @@
       "id": "1",
       "type": "customNode",
       "position": {
-        "x": 231,
-        "y": 144
+        "x": 40,
+        "y": 496
       },
       "data": {
         "Name": "Candles",
@@ -102,8 +102,8 @@
       "id": "2",
       "type": "customNode",
       "position": {
-        "x": 1304.97763801782,
-        "y": 85.84913422931504
+        "x": 940,
+        "y": 127
       },
       "data": {
         "Name": "Strategy Run",
@@ -423,8 +423,8 @@
       "id": "3",
       "type": "customNode",
       "position": {
-        "x": 922.5873227399793,
-        "y": 432.9316952151331
+        "x": 640,
+        "y": 40
       },
       "data": {
         "Name": "Plot",
@@ -483,8 +483,8 @@
       "id": "4",
       "type": "customNode",
       "position": {
-        "x": 877.4740848283841,
-        "y": 262.8475202063185
+        "x": 640,
+        "y": 348
       },
       "data": {
         "Name": "Greater Than",
@@ -524,8 +524,8 @@
       "id": "5",
       "type": "customNode",
       "position": {
-        "x": 567.5106989997059,
-        "y": 149.54184571247384
+        "x": 340,
+        "y": 116
       },
       "data": {
         "Name": "EMA",
@@ -558,8 +558,8 @@
       "id": "6",
       "type": "customNode",
       "position": {
-        "x": 565.7832980190808,
-        "y": 302.3526072369148
+        "x": 340,
+        "y": 580
       },
       "data": {
         "Name": "EMA",
@@ -595,8 +595,8 @@
       "id": "7",
       "type": "customNode",
       "position": {
-        "x": 903.6732644908998,
-        "y": 766.4246943214432
+        "x": 640,
+        "y": 524
       },
       "data": {
         "Name": "Plot",
@@ -655,8 +655,8 @@
       "id": "8",
       "type": "customNode",
       "position": {
-        "x": 1569.756826289329,
-        "y": 830.5210633413715
+        "x": 1240,
+        "y": 443
       },
       "data": {
         "Name": "Plot Trades",

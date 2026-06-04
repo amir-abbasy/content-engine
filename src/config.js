@@ -71,6 +71,10 @@ Options:
   --max-total-sec <n>   Auto-derive a speed-up so the final video fits this many seconds
   s=<n> | --scene <n>   Record ONLY this scene (1-based index, or a scene id / id substring)
   flow=<name>           Record a named flow: uses its generated pipeline + fixed output/<name> dir
+  skip-until=<n>        Seed nodes 1..n as already-built (via injectFlow nodeCount=n)
+                        and strip their add/wire events from the input track — for fast
+                        iteration on later nodes. Edges between seeded nodes are kept by
+                        the seed; edges TO new nodes still draw on camera.
   -h, --help            Show this help
 
 Env vars (override pipeline.json, are overridden by CLI flags):
@@ -98,6 +102,7 @@ export function parseCli(argv = process.argv.slice(2)) {
   const cli = {
     pipelinePath: 'pipeline.json', headless: undefined, outDir: undefined, url: undefined,
     speed: undefined, maxTotalSec: undefined, scene: undefined, flow: undefined,
+    skipUntil: undefined,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -124,6 +129,10 @@ export function parseCli(argv = process.argv.slice(2)) {
       cli.flow = argv[++i];
     } else if (/^(f|flow)=/.test(arg)) {
       cli.flow = arg.slice(arg.indexOf('=') + 1);
+    } else if (arg === '--skip-until') {
+      cli.skipUntil = numOpt(argv[++i]);
+    } else if (/^skip-until=/.test(arg)) {
+      cli.skipUntil = numOpt(arg.slice(arg.indexOf('=') + 1));
     } else if (arg.startsWith('--')) {
       throw new Error(`Unknown option: ${arg}`);
     } else {

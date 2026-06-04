@@ -17,6 +17,8 @@
     "produce": "node scripts/produce.js",
     "vo": "node scripts/gen-voiceover.js",
     "gif": "node scripts/gen-gifs.js",
+    "chrome": "node scripts/chrome.js",
+    "test:voice": "node scripts/test-voice.js",
     "studio": "node src/studio/start.js",
     "studio:api": "node src/studio/server.js",
     "studio:web": "vite --config studio/vite.config.js"

@@ -1,0 +1,85 @@
+{
+  "flow": "ema-str",
+  "generatedAt": "2026-05-30T14:59:43.744Z",
+  "anchors": [
+    {
+      "semanticId": "ohlcv_data",
+      "nodeKey": "ohlcv.data",
+      "label": "Candles",
+      "meaning": "Get OHLCV trading data with multiple outputs",
+      "category": "Data Source",
+      "execId": "1",
+      "params": {
+        "length": 1000
+      }
+    },
+    {
+      "semanticId": "ta_ema_1",
+      "nodeKey": "ta.ema",
+      "label": "EMA",
+      "meaning": "Exponential Moving Average",
+      "category": "Overlap",
+      "execId": "2",
+      "params": {
+        "length": "40"
+      }
+    },
+    {
+      "semanticId": "ta_ema_2",
+      "nodeKey": "ta.ema",
+      "label": "EMA",
+      "meaning": "Exponential Moving Average",
+      "category": "Overlap",
+      "execId": "3",
+      "params": {
+        "length": 20
+      }
+    },
+    {
+      "semanticId": "np_greater",
+      "nodeKey": "np.greater",
+      "label": "Greater Than",
+      "meaning": "Return the truth value of (x1 > x2) element-wise. Either operand may be a direct numeric value — no CONSTANT node needed.",
+      "category": "Comparison Function",
+      "execId": "4",
+      "params": {}
+    },
+    {
+      "semanticId": "plot_1",
+      "nodeKey": "plot",
+      "label": "Plot",
+      "meaning": "Plot series with full styling control (line, area, histogram, columns, cross, circles, stepline)",
+      "category": "Plot",
+      "execId": "5",
+      "params": {}
+    },
+    {
+      "semanticId": "plot_2",
+      "nodeKey": "plot",
+      "label": "Plot",
+      "meaning": "Plot series with full styling control (line, area, histogram, columns, cross, circles, stepline)",
+      "category": "Plot",
+      "execId": "6",
+      "params": {}
+    },
+    {
+      "semanticId": "strategy_run",
+      "nodeKey": "strategy.run",
+      "label": "Strategy Run",
+      "meaning": "All-in-one backtest engine with full per-trade ledger, state series, payoff/Ulcer metrics. Drop-in upgrade for Trade Execution. Phase 1 of strategy framework.",
+      "category": "Strategy",
+      "execId": "7",
+      "params": {}
+    },
+    {
+      "semanticId": "plot_trades",
+      "nodeKey": "plot.trades",
+      "label": "Plot Trades",
+      "meaning": "Render trade overlays on the chart: position zones, SL/TP rails, MFE/MAE bands, entry/exit markers. Wire `trades` from STRATEGY.RUN/ENGINE/PAPER. Replaces the implicit auto-overlay; multiple PLOT.TRADES nodes can show different result sources side-by-side.",
+      "category": "Plot",
+      "execId": "8",
+      "params": {}
+    }
+  ],
+  "metrics": {}
+}

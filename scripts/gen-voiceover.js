@@ -22,7 +22,7 @@ import { log } from '../src/lib/log.js';
 const AUTH_FILE = path.join(ROOT, '.eleven-auth.json');
 
 function parseArgs(argv) {
-  const a = { flow: null, lines: null, voice: 'Alex', headed: false, dryRun: false, scene: null, skipExisting: false, doLogin: false, sapi: false };
+  const a = { flow: null, lines: null, voice: 'Alex', headed: false, dryRun: false, scene: null, skipExisting: false, doLogin: false, sapi: false, chromePort: null };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--headed') a.headed = true;
@@ -30,6 +30,8 @@ function parseArgs(argv) {
     else if (arg === '--sapi') a.sapi = true;            // force the offline voice
     else if (arg === '--dry-run') a.dryRun = true;
     else if (arg === '--skip-existing') a.skipExisting = true;
+    else if (arg === '--chrome') a.chromePort = Number(process.env.CHROME_PORT) || 9222;
+    else if (arg === '--chrome-port') a.chromePort = Number(argv[++i]) || 9222;
     else if (arg === '--voice') a.voice = argv[++i];
     else if (arg === '--lines') a.lines = argv[++i];
     else if (arg === '--scene') a.scene = argv[++i];
@@ -100,7 +102,7 @@ async function main() {
   fs.mkdirSync(outScenes, { recursive: true });
   // One shared voice engine for every scene (one ElevenLabs session, reused).
   // `auto` = ElevenLabs when signed in, else the offline voice; `--sapi` forces offline.
-  const voice = await createVoice({ provider: args.sapi ? 'local' : 'auto', authFile: AUTH_FILE, voice: args.voice, headless: !args.headed });
+  const voice = await createVoice({ provider: args.sapi ? 'local' : 'auto', authFile: AUTH_FILE, voice: args.voice, headless: !args.headed, chromePort: args.chromePort });
   log.info(`  voice engine: ${voice.engine}`);
   let ok = 0;
   try {

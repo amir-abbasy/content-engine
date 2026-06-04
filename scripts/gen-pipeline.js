@@ -96,68 +96,110 @@ const setup = [
 // now on the canvas) — i.e. the new node's inputs from already-placed nodes.
 // This reads like a human building the strategy, not "add everything, then wire
 // it all at the end". An edge is drawn right after its later endpoint appears.
-const input = [];
-const attention = []; // markers that prime the eye on each input being edited
-let dragCount = 0;
 const pending = [...dragged].sort((a, b) =>
   (Number(a.target) - Number(b.target)) || a.sourceHandle.localeCompare(b.sourceHandle) || a.targetHandle.localeCompare(b.targetHandle));
-// Nodes already on the canvas when the scene starts: the base set in split mode
-// (built by an earlier scene); nothing in single mode. Edges flush once both
-// endpoints are present, so seeding this lets a new node's inputs from base
-// nodes wire immediately.
-const added = new Set(baseIds);
-let t = T.firstAddAt;
-for (const id of addedIds) {
-  const n = nodeById(id);
-  const rcAt = t;
-  const fillAt = rcAt + T.rcToFill;
-  const clickAt = fillAt + T.fillToClick;
-  // Add the node via the REAL context-menu pick (not injectFlow): it APPENDS a
-  // node with the next sequential id (== build order) and, crucially, leaves the
-  // edges already drawn intact. An injectFlow per add would replace the whole
-  // graph and wipe the wiring done for earlier nodes.
-  // Everything this node touches (search + each setting) shares one focusSession,
-  // so the auto-camera does ONE zoom that glides across them, not a zoom per edit.
-  const ses = Number(id);
-  input.push({ at: r1(rcAt), type: 'rightClick', selector: '.react-flow__pane', position: fallbackPos(n), addsNodeId: Number(id) });
-  input.push({ at: r1(fillAt), type: 'fill', selector: SEARCH, text: searchText(n), focusZoom: 2.0, focusSession: ses });
-  // Match the menu item by EXACT leaf text, so e.g. "RSI" doesn't hit "CRSI"
-  // and "Plot" doesn't hit "Plot Trades".
-  input.push({ at: r1(clickAt), type: 'click', selector: `[role="menuitem"]:has(:text-is("${menuLabel(n)}"))` });
-  const steps = configSteps(n, id);
-  let ct = clickAt + T.clickToConfig;
-  for (const step of steps) {
-    const { _dur, ...ev } = step;
-    input.push({ at: r1(ct), ...ev, focusSession: ses });
-    // Prime a marker on the node input/swatch ~0.4s before it's edited.
-    if (ev.selector && ev.selector.includes('react-flow__node')) {
-      attention.push({ at: r1(Math.max(0, ct - 0.4)), type: 'mark', selector: ev.selector, ...(ev.nth !== undefined ? { nth: ev.nth } : {}), padding: 4, durationMs: 1200 });
+
+// A strategy node is the backtest engine (`strategy.*`) or the trade-overlay
+// renderer (`plot.trades`). When ANY of these exist, the build splits in two:
+// indicators/plots first (phase A), then the backtest wiring (phase B). The
+// chart reveal + Backtest Results overview then play as their own scenes. A
+// pure plotting flow (no such node) keeps the single-scene shape.
+const isStrategyId = (id) => {
+  const k = nodeById(id)?.data?.nodeKey || '';
+  return k.startsWith('strategy.') || k === 'plot.trades';
+};
+const plotIds = addedIds.filter((id) => !isStrategyId(id));
+const stratIds = addedIds.filter((id) => isStrategyId(id));
+const hasStrategyPhase = stratIds.length > 0;
+
+// Process one phase: add each id (with on-camera settings), then drain every
+// pending edge whose BOTH endpoints are now on the canvas. Mutates `pending`
+// (so edges that touch a not-yet-added strategy node naturally roll into the
+// next phase) and returns the resulting input/attention/timing.
+function processIds(idsToAdd, addedSoFar, startT = T.firstAddAt) {
+  const input = [];
+  const attention = [];
+  let dragCount = 0;
+  let t = startT;
+  const added = new Set(addedSoFar);
+  for (const id of idsToAdd) {
+    const n = nodeById(id);
+    const rcAt = t;
+    const fillAt = rcAt + T.rcToFill;
+    const clickAt = fillAt + T.fillToClick;
+    // Add the node via the REAL context-menu pick (not injectFlow): it APPENDS a
+    // node with the next sequential id (== build order) and, crucially, leaves the
+    // edges already drawn intact. An injectFlow per add would replace the whole
+    // graph and wipe the wiring done for earlier nodes.
+    // Everything this node touches (search + each setting) shares one focusSession,
+    // so the auto-camera does ONE zoom that glides across them, not a zoom per edit.
+    const ses = Number(id);
+    // `flowPos` carries the node's flow-coords; the recorder converts them
+    // live via the React Flow viewport transform, which always reflects the
+    // current layout (auto-fit, post-execute pane resize, repositioned strategy
+    // nodes, etc.). `position` is kept as a last-ditch FIT-based fallback.
+    input.push({ at: r1(rcAt), type: 'rightClick', selector: '.react-flow__pane', position: fallbackPos(n), flowPos: { x: n.position.x, y: n.position.y }, addsNodeId: Number(id) });
+    input.push({ at: r1(fillAt), type: 'fill', selector: SEARCH, text: searchText(n), focusZoom: 2.0, focusSession: ses });
+    // Match the menu item by EXACT leaf text, so e.g. "RSI" doesn't hit "CRSI"
+    // and "Plot" doesn't hit "Plot Trades".
+    input.push({ at: r1(clickAt), type: 'click', selector: `[role="menuitem"]:has(:text-is("${menuLabel(n)}"))` });
+    const steps = configSteps(n, id);
+    let ct = clickAt + T.clickToConfig;
+    for (const step of steps) {
+      const { _dur, ...ev } = step;
+      input.push({ at: r1(ct), ...ev, focusSession: ses });
+      // Prime a marker on the node input/swatch ~0.4s before it's edited.
+      if (ev.selector && ev.selector.includes('react-flow__node')) {
+        attention.push({ at: r1(Math.max(0, ct - 0.4)), type: 'mark', selector: ev.selector, ...(ev.nth !== undefined ? { nth: ev.nth } : {}), padding: 4, durationMs: 1200 });
+      }
+      ct += _dur || 1.6;
     }
-    ct += _dur || 1.6;
+    added.add(id);
+    // Wire every edge whose BOTH endpoints are now present (mostly this node's
+    // freshly-addable inputs). framePair (autocamera) frames both endpoints.
+    const ready = pending.filter((e) => added.has(e.source) && added.has(e.target));
+    let dt = ct + T.blockGap;
+    for (const e of ready) {
+      input.push({ at: r1(dt), type: 'drag', selector: handleSel(e.source, e.sourceHandle), toSelector: handleSel(e.target, e.targetHandle), focusZoom: 1.6, focusSelector: nodeSel(e.target) });
+      pending.splice(pending.indexOf(e), 1);
+      dt += T.dragGap;
+      dragCount++;
+    }
+    t = ready.length ? dt + T.blockGap : ct + T.blockGap; // extra beat after wiring
   }
-  added.add(id);
-  // Wire every edge whose BOTH endpoints are now present (mostly this node's
-  // freshly-addable inputs). framePair (autocamera) frames both endpoints.
-  const ready = pending.filter((e) => added.has(e.source) && added.has(e.target));
-  let dt = ct + T.blockGap;
-  for (const e of ready) {
-    input.push({ at: r1(dt), type: 'drag', selector: handleSel(e.source, e.sourceHandle), toSelector: handleSel(e.target, e.targetHandle), focusZoom: 1.6, focusSelector: nodeSel(e.target) });
-    pending.splice(pending.indexOf(e), 1);
-    dt += T.dragGap;
-    dragCount++;
-  }
-  t = ready.length ? dt + T.blockGap : ct + T.blockGap; // extra beat after wiring
-}
-// Any edges left (endpoints exist but never flushed — shouldn't happen) draw now.
-for (const e of pending) {
-  input.push({ at: r1(t), type: 'drag', selector: handleSel(e.source, e.sourceHandle), toSelector: handleSel(e.target, e.targetHandle), focusZoom: 1.6, focusSelector: nodeSel(e.target) });
-  t += T.dragGap; dragCount++;
+  return { input, attention, dragCount, t, added };
 }
 
-// ── run the backtest.
-const executeAt = r1(t + T.lastDragToExecute);
-input.push({ at: executeAt, type: 'click', selector: 'button[title="Execute flow"]' });
+// Plot/indicator nodes are added first; if the flow has strategy/trade nodes,
+// they're added right after in the SAME build scene (no intermediate execute
+// or chart reveal) so the build reads as one continuous left-to-right wiring
+// sequence. A single Execute at the very end triggers both the plots and the
+// backtest in one pass.
+const phaseA = processIds(plotIds, baseIds);
+const phaseB = hasStrategyPhase
+  ? processIds(stratIds, phaseA.added, phaseA.t)
+  : null;
+
+const combined = {
+  input: phaseB ? [...phaseA.input, ...phaseB.input] : phaseA.input,
+  attention: phaseB ? [...phaseA.attention, ...phaseB.attention] : phaseA.attention,
+  dragCount: phaseA.dragCount + (phaseB?.dragCount || 0),
+  t: phaseB?.t ?? phaseA.t,
+  added: phaseB?.added ?? phaseA.added,
+};
+
+// Drain any pending edges whose endpoints are now both on canvas (safety net —
+// the per-node loop drains as it goes), then click Execute. One execute at
+// the very end runs the indicators AND the backtest in one pass.
+for (const e of pending.filter((edge) => combined.added.has(edge.source) && combined.added.has(edge.target))) {
+  combined.input.push({ at: r1(combined.t), type: 'drag', selector: handleSel(e.source, e.sourceHandle), toSelector: handleSel(e.target, e.targetHandle), focusZoom: 1.6, focusSelector: nodeSel(e.target) });
+  pending.splice(pending.indexOf(e), 1);
+  combined.t += T.dragGap; combined.dragCount++;
+}
+const executeAt = r1(combined.t + T.lastDragToExecute);
+combined.input.push({ at: executeAt, type: 'click', selector: 'button[title="Execute flow"]' });
 const durationSec = r1(executeAt + T.executeToEnd);
+const dragCount = combined.dragCount;
 
 // ── write output.
 const pipePath = path.resolve(ROOT, 'pipeline.json'); // template for app/record/output
@@ -166,45 +208,59 @@ const outPath = path.resolve(ROOT, CONFIG.pipelineOut);
 mkdirSync(path.dirname(outPath), { recursive: true });
 
 if (CONFIG.mode === 'single') {
-  const scene = {
+  // ONE continuous build scene → chart reveal → (when there's a backtest)
+  // the Backtest Results panel. The build scene adds plot/indicator nodes
+  // first, then any strategy.* + plot.trades nodes right after in the same
+  // session, and executes once at the end so the chart already has trades
+  // when it's revealed. The auto-layout in build-flow.js parks strategy
+  // nodes in a horizontal lane right of the plots so the camera flows
+  // left-to-right and never pulls back to fit far-flung positions.
+  const scenes = [{
     id: CONFIG.sceneId,
-    description: `Build the complete ${FLOW.toUpperCase()} strategy on camera: add every node, enter its settings, draw every connection, then run the backtest. Fully generated from ${CONFIG.src} by scripts/gen-pipeline.js.`,
+    description: `Build the complete ${FLOW.toUpperCase()} strategy on camera: add every node (indicators first, then ${hasStrategyPhase ? 'the strategy + trade-overlay nodes, ' : ''}), enter settings, draw every connection, then execute. Fully generated from ${CONFIG.src} by scripts/gen-pipeline.js.`,
     target: { selector: '.react-flow', aspect: '9:16', anchor: 'center' },
     setup,
     durationSec,
     holdAfterSec: 2.0,
     autoCamera: true,
-    tracks: { input, ...(attention.length ? { attention } : {}) },
-  };
-  // After the build runs, switch from the node editor (Shift+2) back to the
-  // chart view (Shift+1) — the executed plots persist across the toggle in the
-  // same session — and drag the chart back a little to reveal the result.
-  const chartScene = {
+    tracks: { input: combined.input, ...(combined.attention.length ? { attention: combined.attention } : {}) },
+  }];
+  // Chart reveal — shows the indicators plotted, with trade overlays from
+  // PLOT.TRADES when the flow ran a backtest. Carries the outro narration.
+  scenes.push({
     id: 'chart-reveal',
-    description: `Reveal the chart with the plotted ${FLOW.toUpperCase()} result after running the strategy.`,
+    description: `Reveal the chart with the plotted ${FLOW.toUpperCase()} result${hasStrategyPhase ? ' and trade overlays from PLOT.TRADES' : ''} after running the strategy.`,
     target: { selector: '#main-chart', aspect: '9:16', anchor: 'center' },
     setup: [{ at: 0.0, type: 'press', key: 'Digit1', shift: true }],
     durationSec: 6.0,
     holdAfterSec: 1.0,
     autoCamera: false,
-    tracks: {
-      input: [
-        // Pan the chart into the PAST: grab the plot area and drag RIGHTWARD so
-        // older bars scroll in from the left (dragging left would chase the newest
-        // bars — you're already there, so nothing moves). A wide, centred drag.
-        { at: 1.4, type: 'drag', point: { x: 950, y: 540 }, to: { x: 1550, y: 540 } },
-      ],
-    },
-  };
+    tracks: { input: [{ at: 1.4, type: 'drag', point: { x: 950, y: 540 }, to: { x: 1550, y: 540 } }] },
+  });
+  // Backtest Results overview — only when the flow actually ran a backtest.
+  // Shift+5 = solo view of the result pane (PANE_KEYS[4]='result'); the
+  // BacktestPanel defaults to the Overview tab so no extra clicks are needed.
+  if (hasStrategyPhase) {
+    scenes.push({
+      id: 'backtest-overview',
+      description: `Show the Backtest Results panel (Overview tab) with the hero metrics, verdict and equity sparkline for the ${FLOW.toUpperCase()} run.`,
+      target: { selector: '[data-testid="backtest-panel"]', aspect: '9:16', anchor: 'center' },
+      setup: [{ at: 0.0, type: 'press', key: 'Digit5', shift: true }],
+      durationSec: 7.0,
+      holdAfterSec: 1.0,
+      autoCamera: false,
+      tracks: { input: [] },
+    });
+  }
   const pipeline = {
     name: `${FLOW}-strategy-reel`,
     app: template.app,
     record: template.record,
     output: template.output,
-    scenes: [scene, chartScene],
+    scenes,
   };
   writeFileSync(outPath, serialize(pipeline) + '\n');
-  console.log(`wrote ${CONFIG.pipelineOut} (single-scene build)`);
+  console.log(`wrote ${CONFIG.pipelineOut} (${scenes.length}-scene build${hasStrategyPhase ? ', with backtest phase' : ''})`);
 } else {
   const pipeline = JSON.parse(readFileSync(outPath, 'utf8'));
   let scene = pipeline.scenes.find((s) => s.id === CONFIG.sceneId);

@@ -93,5 +93,9 @@ export function createCursorDriver(page, rng, opts = {}) {
     moveTo,
     hesitate,
     get pos() { return { x: cx, y: cy }; },
+    // Lets callers that move the cursor outside `moveTo` (e.g. a straight-line
+    // drag step loop) sync the remembered position so the next moveTo lerps
+    // from where the cursor actually ended up, not from before the bypass.
+    setPos(x, y) { cx = x; cy = y; },
   };
 }

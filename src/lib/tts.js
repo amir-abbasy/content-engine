@@ -59,28 +59,42 @@ async function probeMs(file) {
 }
 
 // Windows SAPI -> WAV via a tiny PowerShell one-liner. `rate` is SAPI's -10..10
-// speaking-rate scale (0 = normal). Returns true on success.
-async function sapiToWav(text, outPath, { rate = 1 } = {}) {
+// speaking-rate scale (0 = normal). Returns true on success. When `voice` is
+// set we attempt to match it against the installed SAPI voices (exact name OR
+// case-insensitive substring), so e.g. "David" matches "Microsoft David
+// Desktop". An unmatched name falls back to the system default voice and the
+// installed-voices list is printed once so the caller can pick a real one.
+async function sapiToWav(text, outPath, { rate = 1, voice = null } = {}) {
   const escaped = String(text).replace(/'/g, "''");
+  const escVoice = voice ? String(voice).replace(/'/g, "''") : '';
+  const select = voice
+    ? `$want='${escVoice}'; $v=$s.GetInstalledVoices() | Where-Object { $_.Enabled } | Select-Object -ExpandProperty VoiceInfo; ` +
+      `$pick=$v | Where-Object { $_.Name -ieq $want } | Select-Object -First 1; ` +
+      `if (-not $pick) { $pick=$v | Where-Object { $_.Name -ilike "*$want*" } | Select-Object -First 1 } ` +
+      `if ($pick) { $s.SelectVoice($pick.Name) } else { Write-Host "SAPI: voice '$want' not installed. Available:" ; $v | ForEach-Object { Write-Host ('  - ' + $_.Name) } }; `
+    : '';
   const ps = [
     'Add-Type -AssemblyName System.Speech;',
     "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer;",
+    select,
     `$s.Rate = ${Math.round(rate)};`,
     `$s.SetOutputToWaveFile('${outPath.replace(/'/g, "''")}');`,
     `$s.Speak('${escaped}');`,
     '$s.Dispose();',
   ].join(' ');
-  const { code } = await exec('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps]);
+  const { code, out } = await exec('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps]);
+  if (out && /SAPI: voice/.test(out)) process.stdout.write(out); // surface the diagnostic
   return code === 0 && fs.existsSync(outPath);
 }
 
 export async function synth(text, opts = {}) {
-  const { audioPath } = opts;
+  const { audioPath, voice } = opts;
   if (audioPath && process.platform === 'win32') {
     // SAPI emits WAV — normalise the extension so the file isn't mislabeled
-    // (e.g. a caller-supplied .mp3 path) and return the real path.
+    // (e.g. a caller-supplied .mp3 path) and return the real path. `voice` is
+    // forwarded so SAPI can SelectVoice when an installed match exists.
     const wavPath = audioPath.replace(/\.[^.]+$/, '.wav');
-    const ok = await sapiToWav(text, wavPath, opts).catch(() => false);
+    const ok = await sapiToWav(text, wavPath, { ...opts, voice }).catch(() => false);
     if (ok) {
       const durationMs = (await probeMs(wavPath)) ?? estimate(text, opts).durationMs;
       return { text, durationMs, wordTimings: scaledWordTimings(text, durationMs), audioPath: wavPath, engine: 'sapi' };
@@ -104,17 +118,18 @@ function scaledWordTimings(text, durationMs) {
 //   • provider 'elevenlabs' — drive elevenlabs.io via the saved login session.
 //   • provider 'local'      — Windows SAPI (offline) / silent estimate.
 //   • provider 'auto'       — ElevenLabs if a login file exists, else local.
-export async function createVoice({ provider = 'auto', authFile = null, voice = 'Alex', headless = true } = {}) {
+export async function createVoice({ provider = 'auto', authFile = null, voice = 'Alex', headless = true, chromePort = null, verbose = false, keepOpen = false } = {}) {
   const haveAuth = authFile && fs.existsSync(authFile);
-  const useEleven = provider === 'elevenlabs' || (provider === 'auto' && haveAuth);
+  // Attaching to a running Chrome wins everything else — no login, no captcha.
+  const useEleven = provider === 'elevenlabs' || chromePort || (provider === 'auto' && haveAuth);
 
   if (useEleven) {
     const el = await import('./elevenlabs.js');
     let session = null;
     return {
-      engine: 'elevenlabs',
+      engine: chromePort ? 'elevenlabs (attached)' : 'elevenlabs',
       async synth(text, { audioPath } = {}) {
-        if (!session) session = await el.openSession({ headless, voice, authFile });
+        if (!session) session = await el.openSession({ headless, voice, authFile, chromePort, verbose, keepOpen });
         const { buffer, ext, alignment } = await el.synthLine(session, text);
         const outPath = audioPath ? audioPath.replace(/\.[^.]+$/, `.${ext}`) : null;
         if (outPath) fs.writeFileSync(outPath, buffer);
@@ -127,7 +142,9 @@ export async function createVoice({ provider = 'auto', authFile = null, voice = 
 
   return {
     engine: process.platform === 'win32' ? 'sapi' : 'estimate',
-    async synth(text, opts) { return synth(text, opts); },
+    // Forward `voice` so SAPI can SelectVoice — without this the configured
+    // voice was silently ignored and you'd always hear the system default.
+    async synth(text, opts = {}) { return synth(text, { ...opts, voice }); },
     async close() {},
   };
 }

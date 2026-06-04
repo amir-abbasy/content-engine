@@ -1,0 +1,151 @@
+{
+  "name": "ema-str-new-strategy-reel",
+  "app": {
+    "url": "http://localhost:3000/",
+    "viewport": {"width":1920,"height":1080},
+    "waitForPyodide": true,
+    "pyodideLoaderSelector": ".app-pyodide-loader",
+    "readySelector": "#main-chart",
+    "readyTimeoutMs": 120000
+  },
+  "record": {
+    "browser": "chromium",
+    "headless": false,
+    "timelineOffsetMs": 0,
+    "settleMs": 300,
+    "humanize": {
+      "seed": 7,
+      "jitter": 0.15,
+      "scale": 1,
+      "preActionPause": [
+        40,
+        90
+      ]
+    },
+    "autoZoom": {
+      "enabled": true,
+      "lockX": false,
+      "restZoom": 1,
+      "focusZoom": 2,
+      "delayMs": 350,
+      "zoomMs": 500,
+      "zoomOutMs": 300,
+      "holdMs": 400,
+      "panMs": 250,
+      "ease": "cubic-in-out"
+    },
+    "cursor": {
+      "movement": "human",
+      "duration": [
+        140,
+        260
+      ],
+      "overshoot": 0.12,
+      "hesitation": [
+        25,
+        60
+      ],
+      "curvature": 0.4
+    }
+  },
+  "output": {
+    "dir": "output",
+    "resolution": {"width":1080,"height":1920},
+    "fps": 30,
+    "fitMode": "cover",
+    "keepRaw": true,
+    "speed": 1
+  },
+  "scenes": [
+    {
+      "id": "ema-str-new-strategy",
+      "description": "Build the complete EMA-STR-NEW strategy on camera: add every node (indicators first, then the strategy + trade-overlay nodes, ), enter settings, draw every connection, then execute. Fully generated from flows/flow-ema-str-new.json by scripts/gen-pipeline.js.",
+      "target": {"selector":".react-flow","aspect":"9:16","anchor":"center"},
+      "setup": [
+        {"at":0,"type":"press","key":"Digit2","shift":true},
+        {"at":0.4,"type":"injectFlow","file":"flows/ema-str-new/build.json"},
+        {"at":1.6,"type":"press","key":"Digit2","shift":true},
+        {"at":2,"type":"injectFlow","file":"flows/ema-str-new/build.json","nodeCount":0}
+      ],
+      "durationSec": 88.7,
+      "holdAfterSec": 2,
+      "autoCamera": true,
+      "tracks": {
+        "input": [
+          {"at":0.8,"type":"rightClick","selector":".react-flow__pane","position":{"x":-271,"y":488},"flowPos":{"x":40,"y":496},"addsNodeId":1},
+          {"at":1.8,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"candles","focusZoom":2,"focusSession":1},
+          {"at":4.2,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"Candles\"))"},
+          {"at":5.3,"type":"fill","selector":".react-flow__node[data-id=\"1\"] input[placeholder=\"int\"]","nth":0,"text":"1000","focusZoom":2.4,"focusSession":1},
+          {"at":8.5,"type":"rightClick","selector":".react-flow__pane","position":{"x":-66,"y":229},"flowPos":{"x":340,"y":116},"addsNodeId":2},
+          {"at":9.5,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"ema","focusZoom":2,"focusSession":2},
+          {"at":11.9,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"EMA\"))"},
+          {"at":13,"type":"fill","selector":".react-flow__node[data-id=\"2\"] input[placeholder=\"int\"]","nth":0,"text":"20","focusZoom":2.4,"focusSession":2},
+          {"at":16.2,"type":"drag","selector":".react-flow__node[data-id=\"1\"] .react-flow__handle[data-handleid=\"output-3\"]","toSelector":".react-flow__node[data-id=\"2\"] .react-flow__handle[data-handleid=\"input-0\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"2\"]"},
+          {"at":19.6,"type":"rightClick","selector":".react-flow__pane","position":{"x":-66,"y":545},"flowPos":{"x":340,"y":580},"addsNodeId":3},
+          {"at":20.6,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"ema","focusZoom":2,"focusSession":3},
+          {"at":23,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"EMA\"))"},
+          {"at":24.1,"type":"fill","selector":".react-flow__node[data-id=\"3\"] input[placeholder=\"int\"]","nth":0,"text":"40","focusZoom":2.4,"focusSession":3},
+          {"at":27.3,"type":"drag","selector":".react-flow__node[data-id=\"1\"] .react-flow__handle[data-handleid=\"output-3\"]","toSelector":".react-flow__node[data-id=\"3\"] .react-flow__handle[data-handleid=\"input-0\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"3\"]"},
+          {"at":30.7,"type":"rightClick","selector":".react-flow__pane","position":{"x":138,"y":177},"flowPos":{"x":640,"y":40},"addsNodeId":4},
+          {"at":31.7,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"plot","focusZoom":2,"focusSession":4},
+          {"at":34.1,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"Plot\"))"},
+          {"at":36.6,"type":"drag","selector":".react-flow__node[data-id=\"2\"] .react-flow__handle[data-handleid=\"output-0\"]","toSelector":".react-flow__node[data-id=\"4\"] .react-flow__handle[data-handleid=\"input-0\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"4\"]"},
+          {"at":40,"type":"rightClick","selector":".react-flow__pane","position":{"x":138,"y":387},"flowPos":{"x":640,"y":348},"addsNodeId":5},
+          {"at":41,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"greater than","focusZoom":2,"focusSession":5},
+          {"at":43.4,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"Greater Than\"))"},
+          {"at":45.9,"type":"drag","selector":".react-flow__node[data-id=\"2\"] .react-flow__handle[data-handleid=\"output-0\"]","toSelector":".react-flow__node[data-id=\"5\"] .react-flow__handle[data-handleid=\"input-0\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"5\"]"},
+          {"at":47.9,"type":"drag","selector":".react-flow__node[data-id=\"3\"] .react-flow__handle[data-handleid=\"output-0\"]","toSelector":".react-flow__node[data-id=\"5\"] .react-flow__handle[data-handleid=\"input-1\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"5\"]"},
+          {"at":51.3,"type":"rightClick","selector":".react-flow__pane","position":{"x":138,"y":507},"flowPos":{"x":640,"y":524},"addsNodeId":6},
+          {"at":52.3,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"plot","focusZoom":2,"focusSession":6},
+          {"at":54.7,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"Plot\"))"},
+          {"at":57.2,"type":"drag","selector":".react-flow__node[data-id=\"3\"] .react-flow__handle[data-handleid=\"output-0\"]","toSelector":".react-flow__node[data-id=\"6\"] .react-flow__handle[data-handleid=\"input-0\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"6\"]"},
+          {"at":60.6,"type":"rightClick","selector":".react-flow__pane","position":{"x":342,"y":237},"flowPos":{"x":940,"y":127},"addsNodeId":7},
+          {"at":61.6,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"strategy run","focusZoom":2,"focusSession":7},
+          {"at":64,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"Strategy Run\"))"},
+          {"at":66.5,"type":"drag","selector":".react-flow__node[data-id=\"5\"] .react-flow__handle[data-handleid=\"output-0\"]","toSelector":".react-flow__node[data-id=\"7\"] .react-flow__handle[data-handleid=\"input-1\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"7\"]"},
+          {"at":68.5,"type":"drag","selector":".react-flow__node[data-id=\"1\"] .react-flow__handle[data-handleid=\"output-9\"]","toSelector":".react-flow__node[data-id=\"7\"] .react-flow__handle[data-handleid=\"input-0\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"7\"]"},
+          {"at":71.9,"type":"rightClick","selector":".react-flow__pane","position":{"x":547,"y":452},"flowPos":{"x":1240,"y":443},"addsNodeId":8},
+          {"at":72.9,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"plot trades","focusZoom":2,"focusSession":8},
+          {"at":75.3,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"Plot Trades\"))"},
+          {"at":77.8,"type":"drag","selector":".react-flow__node[data-id=\"7\"] .react-flow__handle[data-handleid=\"output-1\"]","toSelector":".react-flow__node[data-id=\"8\"] .react-flow__handle[data-handleid=\"input-0\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"8\"]"},
+          {"at":84.2,"type":"click","selector":"button[title=\"Execute flow\"]"}
+        ],
+        "attention": [
+          {"at":4.9,"type":"mark","selector":".react-flow__node[data-id=\"1\"] input[placeholder=\"int\"]","nth":0,"padding":4,"durationMs":1200},
+          {"at":12.6,"type":"mark","selector":".react-flow__node[data-id=\"2\"] input[placeholder=\"int\"]","nth":0,"padding":4,"durationMs":1200},
+          {"at":23.7,"type":"mark","selector":".react-flow__node[data-id=\"3\"] input[placeholder=\"int\"]","nth":0,"padding":4,"durationMs":1200}
+        ]
+      }
+    },
+    {
+      "id": "chart-reveal",
+      "description": "Reveal the chart with the plotted EMA-STR-NEW result and trade overlays from PLOT.TRADES after running the strategy.",
+      "target": {"selector":"#main-chart","aspect":"9:16","anchor":"center"},
+      "setup": [
+        {"at":0,"type":"press","key":"Digit1","shift":true}
+      ],
+      "durationSec": 6,
+      "holdAfterSec": 1,
+      "autoCamera": false,
+      "tracks": {
+        "input": [
+          {"at":1.4,"type":"drag","point":{"x":950,"y":540},"to":{"x":1550,"y":540}}
+        ]
+      }
+    },
+    {
+      "id": "backtest-overview",
+      "description": "Show the Backtest Results panel (Overview tab) with the hero metrics, verdict and equity sparkline for the EMA-STR-NEW run.",
+      "target": {"selector":"[data-testid=\"backtest-panel\"]","aspect":"9:16","anchor":"center"},
+      "setup": [
+        {"at":0,"type":"press","key":"Digit5","shift":true}
+      ],
+      "durationSec": 7,
+      "holdAfterSec": 1,
+      "autoCamera": false,
+      "tracks": {
+        "input": []
+      }
+    }
+  ]
+}

@@ -28,7 +28,7 @@ import { composeReel, composeSimple, concatClips } from '../src/lib/compose.js';
 const AUTH_FILE = path.join(ROOT, '.eleven-auth.json');
 
 function parseArgs(argv) {
-  const a = { flow: null, login: false, voice: 'Alex', headed: false, sapi: false, mute: false, noSfx: false, noGifs: false };
+  const a = { flow: null, login: false, voice: 'Alex', headed: false, sapi: false, mute: false, noSfx: false, noGifs: false, chromePort: null, skipUntil: null };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--login') a.login = true;
@@ -37,6 +37,10 @@ function parseArgs(argv) {
     else if (arg === '--mute' || arg === '--no-voice' || arg === '--no-audio') a.mute = true; // skip the voice service
     else if (arg === '--no-sfx') a.noSfx = true;         // skip sound effects
     else if (arg === '--no-gifs') a.noGifs = true;       // skip emotion gif overlays
+    else if (arg === '--chrome') a.chromePort = Number(process.env.CHROME_PORT) || 9222;   // attach to running Chrome (no login)
+    else if (arg === '--chrome-port') a.chromePort = Number(argv[++i]) || 9222;
+    else if (arg === '--skip-until') a.skipUntil = Number(argv[++i]) || null; // seed nodes 1..N, skip their adds/wires
+    else if (/^--skip-until=/.test(arg)) a.skipUntil = Number(arg.slice(arg.indexOf('=') + 1)) || null;
     else if (arg === '--voice') a.voice = argv[++i];
     else if (!arg.startsWith('-') && !a.flow) a.flow = arg;
   }
@@ -78,12 +82,20 @@ async function main() {
   log('generating build + pipeline…');
   await node(['scripts/gen.js', flow]);
   log('recording (speed 1)…');
-  await node(['src/record.js', `flow=${flow}`], { OUTPUT_SPEED: '1' });
+  const recArgs = ['src/record.js', `flow=${flow}`];
+  if (args.skipUntil) recArgs.push(`skip-until=${args.skipUntil}`);
+  await node(recArgs, { OUTPUT_SPEED: '1' });
 
   const manifest = JSON.parse(fs.readFileSync(path.join(outDir, 'manifest.json'), 'utf8'));
-  const scene = manifest.scenes.find((s) => s.status === 'ok' && s.id !== 'chart-reveal');
-  if (!scene) throw new Error('No successful build scene in manifest');
-  const chartScene = manifest.scenes.find((s) => s.status === 'ok' && s.id === 'chart-reveal');
+  // Strategy flows now interleave build scenes with reveals:
+  //   build-plots → chart-reveal-1 (indicators) → build-strategy → chart-reveal (trades) → backtest-overview
+  // Pure plotting flows stay 2 scenes (build + chart-reveal). Compose iterates
+  // these in declared order and dispatches per scene id (see step 4 below).
+  const okScenes = manifest.scenes.filter((s) => s.status === 'ok');
+  if (!okScenes.length) throw new Error('No successful scenes in manifest');
+  const isReveal = (id) => id.startsWith('chart-reveal') || id === 'backtest-overview';
+  const buildScenes = okScenes.filter((s) => !isReveal(s.id));
+  if (!buildScenes.length) throw new Error('No successful build scene in manifest');
 
   // 2.5: emotion GIFs — generate (uses the lock, so it's fast/stable) then load
   // the manifest. Tolerant: a gif failure must not sink the whole reel.
@@ -129,7 +141,7 @@ async function main() {
   } else {
     // Pick the voice engine once and reuse it (one ElevenLabs session for all
     // lines). `auto` uses ElevenLabs when signed in, else the offline SAPI voice.
-    const voice = await createVoice({ provider: args.sapi ? 'local' : 'auto', authFile: AUTH_FILE, voice: args.voice, headless: !args.headed });
+    const voice = await createVoice({ provider: args.sapi ? 'local' : 'auto', authFile: AUTH_FILE, voice: args.voice, headless: !args.headed, chromePort: args.chromePort });
     log(`voiceover engine: ${voice.engine}${voice.engine === 'sapi' ? ' (offline — run "npm run produce ' + flow + ' --login" once for ElevenLabs)' : ''}`);
     try {
       for (const [i, seg] of plan.build.voiceoverSegments.entries()) {
@@ -149,51 +161,71 @@ async function main() {
     }
   }
 
-  // 4: compose the narration-synced build reel, then (if recorded) the chart-
-  // reveal outro, and join them. The build reel goes to a temp when there's an
-  // outro to append, else straight to the final path.
+  // 4: compose each scene in its declared order. The strategy reel is now
+  //   build-plots → chart-reveal-1 → build-strategy → chart-reveal → backtest-overview
+  // and a pure plotting flow stays as the 2-scene build + chart-reveal.
+  // Build scenes use the per-beat composer with the VO beats whose execIds
+  // match the scene's addBoundaries (plot-half lands on phase A, strategy-half
+  // on phase B). The MAIN chart-reveal (id === 'chart-reveal') carries the
+  // outro VO; intermediate `chart-reveal-N` reveals are silent. The
+  // backtest-overview is a silent hold (BacktestPanel renders Overview by default).
   const soundsDir = args.noSfx ? null : path.join(ROOT, 'assets', 'sounds');
   const outPath = path.join(outDir, `${flow}-reel.mp4`);
-  const buildClip = chartScene ? path.join(outDir, `_build-${flow}.mp4`) : outPath;
-  log('composing build reel (per-beat speed + VO + SFX + gif overlays + subtitles)…');
-  const res = await composeReel({
-    sceneClip: scene.clip,
-    addBoundaries: scene.addBoundaries,
-    actionsEndSec: scene.actionsEndSec,
-    clipDurationSec: scene.clipDurationSec,
-    voBeats,
-    sfxCues: scene.sfxCues || [],
-    soundsDir,
-    gifs,
-    resolution: manifest.resolution,
-    fps: manifest.fps,
-    outPath: buildClip,
-  });
-  let totalSec = res.totalMs / 1000;
-
-  if (chartScene) {
-    log('composing chart-reveal outro…');
-    const chartClip = path.join(outDir, `_chart-${flow}.mp4`);
-    const cres = await composeSimple({
-      sceneClip: chartScene.clip,
-      clipDurationSec: chartScene.clipDurationSec,
-      sfxCues: chartScene.sfxCues || [],
-      soundsDir,
-      voLine: outroVo ? outroVo.line : null,
-      voAudioPath: outroVo ? outroVo.audioPath : null,
-      narrationMs: outroVo ? outroVo.narrationMs : 0,
-      resolution: manifest.resolution,
-      fps: manifest.fps,
-      outPath: chartClip,
-    });
-    log('joining build + chart-reveal…');
-    await concatClips([buildClip, chartClip], outPath);
-    totalSec += cres.durationMs / 1000;
-    fs.rmSync(buildClip, { force: true });
-    fs.rmSync(chartClip, { force: true });
+  const tempClips = [];
+  let totalSec = 0, totalSegments = 0, totalSfx = 0, totalGifs = 0;
+  let anyVoiced = false;
+  for (const s of okScenes) {
+    const clipOut = path.join(outDir, `_${s.id}-${flow}.mp4`);
+    if (s.id === 'backtest-overview') {
+      log(`composing "${s.id}" (silent metrics hold)…`);
+      const r = await composeSimple({
+        sceneClip: s.clip, clipDurationSec: s.clipDurationSec, sfxCues: s.sfxCues || [], soundsDir,
+        voLine: null, voAudioPath: null, narrationMs: 0,
+        resolution: manifest.resolution, fps: manifest.fps, outPath: clipOut,
+      });
+      totalSec += r.durationMs / 1000;
+    } else if (s.id.startsWith('chart-reveal')) {
+      const carriesOutro = s.id === 'chart-reveal' && !!outroVo;
+      log(`composing "${s.id}" (${carriesOutro ? 'outro VO' : 'silent pan'})…`);
+      const r = await composeSimple({
+        sceneClip: s.clip, clipDurationSec: s.clipDurationSec, sfxCues: s.sfxCues || [], soundsDir,
+        voLine: carriesOutro ? outroVo.line : null,
+        voAudioPath: carriesOutro ? outroVo.audioPath : null,
+        narrationMs: carriesOutro ? outroVo.narrationMs : 0,
+        resolution: manifest.resolution, fps: manifest.fps, outPath: clipOut,
+      });
+      totalSec += r.durationMs / 1000;
+      if (carriesOutro) anyVoiced = true;
+    } else {
+      // Build scene — partition VO beats and gifs by which execIds THIS scene
+      // recorded (each build scene only knows about its own addBoundaries).
+      const boundaryIds = new Set((s.addBoundaries || []).map((b) => String(b.execId)));
+      const sceneVoBeats = voBeats.filter((vb) => boundaryIds.has(String(vb.execId)));
+      const sceneGifs = gifs.filter((g) => sceneVoBeats.some((vb) => vb.actionRef === g.actionRef));
+      log(`composing "${s.id}" (${sceneVoBeats.length} VO beat${sceneVoBeats.length === 1 ? '' : 's'}, per-beat speed + VO + SFX + gif overlays + subtitles)…`);
+      const r = await composeReel({
+        sceneClip: s.clip, addBoundaries: s.addBoundaries, actionsEndSec: s.actionsEndSec,
+        clipDurationSec: s.clipDurationSec, voBeats: sceneVoBeats, sfxCues: s.sfxCues || [],
+        soundsDir, gifs: sceneGifs,
+        resolution: manifest.resolution, fps: manifest.fps, outPath: clipOut,
+      });
+      totalSec += r.totalMs / 1000;
+      totalSegments += r.segments; totalSfx += r.sfx; totalGifs += r.gifs;
+      if (r.voiced) anyVoiced = true;
+    }
+    tempClips.push(clipOut);
+  }
+  // ── stitch everything together, then clean up the per-scene temp clips.
+  if (tempClips.length === 1) {
+    fs.renameSync(tempClips[0], outPath);
+  } else {
+    log(`joining ${tempClips.length} scenes → ${path.basename(outPath)}…`);
+    await concatClips(tempClips, outPath);
+    for (const p of tempClips) { try { fs.rmSync(p, { force: true }); } catch {} }
   }
 
-  log(`\x1b[32mdone\x1b[0m — ${path.relative(ROOT, outPath)}  (${totalSec.toFixed(1)}s, build: ${res.segments} segs, voice: ${res.voiced ? 'yes' : 'no'}, sfx: ${res.sfx}, gifs: ${res.gifs}${chartScene ? ', +chart-reveal' : ''})`);
+  const revealIds = okScenes.filter((s) => isReveal(s.id)).map((s) => s.id);
+  log(`\x1b[32mdone\x1b[0m — ${path.relative(ROOT, outPath)}  (${totalSec.toFixed(1)}s, ${okScenes.length} scenes: ${buildScenes.length} build + ${revealIds.length} reveal [${revealIds.join(', ')}], build segs: ${totalSegments}, voice: ${anyVoiced ? 'yes' : 'no'}, sfx: ${totalSfx}, gifs: ${totalGifs})`);
 }
 
 main().catch((err) => { console.error(`\x1b[31m[produce] ${err.message}\x1b[0m`); process.exit(1); });

@@ -1,0 +1,54 @@
+{
+  "video": {
+    "flow": "ema-str-new",
+    "title": "EMA Crossover Builder",
+    "tone": "focus"
+  },
+  "build": {
+    "voiceoverSegments": [
+      {
+        "line": "We start by loading the last 1000 candles, giving the strategy its price history to work with.",
+        "actionRef": "ohlcv_data",
+        "emotion": "calm"
+      },
+      {
+        "line": "Next we add a 20-period EMA, which smooths the price while favoring newer moves.",
+        "actionRef": "ta_ema_1",
+        "emotion": "focus"
+      },
+      {
+        "line": "Then we layer a 40-period EMA beneath it, creating a slower trend line for comparison.",
+        "actionRef": "ta_ema_2",
+        "emotion": "precision"
+      },
+      {
+        "line": "We plot the first EMA in blue so its trend stands out on the chart.",
+        "actionRef": "plot_1",
+        "emotion": "calm"
+      },
+      {
+        "line": "We compare the two EMAs with a greater-than test, flagging when the faster line sits above the slower.",
+        "actionRef": "np_greater",
+        "emotion": "focus"
+      },
+      {
+        "line": "We plot the second EMA in orange, making the crossover relationship easy to see.",
+        "actionRef": "plot_2",
+        "emotion": "excited"
+      },
+      {
+        "line": "We then run the strategy through the backtest engine, generating trades based on those EMA signals.",
+        "actionRef": "strategy_run",
+        "emotion": "focus"
+      },
+      {
+        "line": "Finally we overlay the trades on the chart, showing entry and exit points for visual review.",
+        "actionRef": "plot_trades",
+        "emotion": "calm"
+      }
+    ]
+  },
+  "outro": {
+    "voiceover": "You now see both EMAs plotted, with highlighted crossovers and trade markers, ready to backtest."
+  }
+}

@@ -18,8 +18,15 @@
 // ElevenLabs API with a key is the alternative — same backend, no browser.)
 
 import fs from 'node:fs';
+import path from 'node:path';
 import playwright from 'playwright';
 import { log } from './log.js';
+import { ROOT } from '../config.js';
+
+// When verbose mode is on, every picker step writes a screenshot here so the
+// user can SEE what the picker actually did (the picker click happens in a
+// fraction of a second otherwise).
+const DEBUG_DIR = path.join(ROOT, 'output', '_voice-debug');
 
 const URL = 'https://elevenlabs.io/';
 
@@ -56,11 +63,21 @@ function decodeTtsBody(buf, contentType) {
   return { buffer: buf, ext: extForContentType(ct), alignment: null };
 }
 
+// Best-effort dismissal of the "We value your privacy" cookie dialog, plus any
+// generic accept/agree button. Tries getByRole + getByText so banners that use
+// non-button elements still close. Called at page-open AND right before picker
+// interactions in case the dialog appears late.
 async function dismissConsent(page) {
-  for (const name of [/accept all/i, /allow all/i, /^accept$/i, /agree/i]) {
-    const btn = page.getByRole('button', { name }).first();
-    if (await btn.count().catch(() => 0)) { await btn.click({ timeout: 1500 }).catch(() => {}); break; }
+  const labels = [/^accept all cookies$/i, /accept all/i, /allow all/i, /^accept$/i, /^agree$/i, /i agree/i];
+  for (const name of labels) {
+    let target = page.getByRole('button', { name }).first();
+    if (!(await target.count().catch(() => 0))) target = page.getByText(name, { exact: false }).first();
+    if (await target.count().catch(() => 0)) {
+      const ok = await target.click({ timeout: 1500 }).then(() => true).catch(() => false);
+      if (ok) { await page.waitForTimeout(300); return true; }
+    }
   }
+  return false;
 }
 
 // One-time interactive sign-in: opens a headed browser, waits for you to log in,
@@ -78,14 +95,36 @@ export async function login(authFile, { timeoutMs = 240_000 } = {}) {
   await browser.close();
 }
 
-// Launch one reusable session on the generator. Pass { authFile } to reuse a
-// saved login (recommended — the anonymous endpoint is captcha-gated).
-export async function openSession({ headless = true, voice = 'Alex', selectors = {}, authFile = null } = {}) {
+// Launch one reusable session on the generator. Three ways to get past the
+// captcha-gated anonymous endpoint, in order of preference:
+//   • chromePort  — attach to your already-running Chrome via CDP (uses your
+//                   real logged-in session; no extra login dance).
+//   • authFile    — reuse a session saved by login() (headless after one-time).
+//   • neither     — anonymous; will 401 on the TTS request.
+export async function openSession({ headless = true, voice = 'Alex', selectors = {}, authFile = null, chromePort = null, verbose = false, keepOpen = false } = {}) {
   const sel = { ...SEL, ...selectors };
-  const browser = await playwright.chromium.launch({ headless });
-  const contextOpts = {};
-  if (authFile && fs.existsSync(authFile)) { contextOpts.storageState = authFile; }
-  const context = await browser.newContext(contextOpts);
+  let browser, context, attached = false;
+
+  if (chromePort) {
+    // 127.0.0.1 avoids the IPv6 (::1) resolution that fails on some Windows
+    // setups even when Chrome's debug port is listening on IPv4 only.
+    const endpoint = `http://127.0.0.1:${chromePort}`;
+    try {
+      browser = await playwright.chromium.connectOverCDP(endpoint);
+    } catch (e) {
+      throw new Error(`Could not attach to Chrome on ${endpoint} (${e.message}). Run "npm run chrome" to launch a Chrome with the debug port open, then sign in to ElevenLabs in that window.`);
+    }
+    // Re-use the existing default context so we inherit cookies (= the login).
+    context = browser.contexts()[0] || (await browser.newContext());
+    attached = true;
+    log.step(`ElevenLabs: attached to your Chrome on port ${chromePort} (using your session)`);
+  } else {
+    browser = await playwright.chromium.launch({ headless });
+    const contextOpts = {};
+    if (authFile && fs.existsSync(authFile)) { contextOpts.storageState = authFile; }
+    context = await browser.newContext(contextOpts);
+    log.step(`ElevenLabs: opening ${URL}${authFile && fs.existsSync(authFile) ? ' (signed in)' : ' (anonymous — will hit captcha)'}`);
+  }
   const page = await context.newPage();
 
   // Capture every TTS response (or any audio response) with a timestamp.
@@ -101,40 +140,160 @@ export async function openSession({ headless = true, voice = 'Alex', selectors =
     } catch { /* ignore */ }
   });
 
-  log.step(`ElevenLabs: opening ${URL}${authFile && fs.existsSync(authFile) ? ' (signed in)' : ' (anonymous)'}`);
+  if (verbose) {
+    fs.mkdirSync(DEBUG_DIR, { recursive: true });
+    log.info(`  verbose: screenshots → ${path.relative(ROOT, DEBUG_DIR)}/`);
+  }
+
   await page.goto(URL, { waitUntil: 'domcontentloaded' });
   await dismissConsent(page);
-  await page.waitForSelector(sel.textarea, { state: 'visible', timeout: 30_000 });
 
-  return { browser, context, page, sel, voice, ttsResponses, voicePicked: false };
+  // Take a screenshot AS SOON AS the page settles, so the user always gets at
+  // least one artifact — even if the textarea wait below fails (e.g. when a
+  // signed-in session lands on the dashboard instead of the demo homepage).
+  if (verbose) {
+    const file = path.join(DEBUG_DIR, 'picker-00-page-loaded.png');
+    await page.screenshot({ path: file, fullPage: false }).catch(() => {});
+    log.info(`  page loaded: ${page.url()} — screenshot → ${path.relative(ROOT, file)}`);
+  }
+
+  try {
+    await page.waitForSelector(sel.textarea, { state: 'visible', timeout: 30_000 });
+  } catch (e) {
+    if (verbose) {
+      const file = path.join(DEBUG_DIR, 'picker-00b-textarea-missing.png');
+      await page.screenshot({ path: file, fullPage: true }).catch(() => {});
+      log.warn(`  textarea missing — full-page screenshot → ${path.relative(ROOT, file)}`);
+    }
+    const here = page.url();
+    throw new Error(`The ElevenLabs demo textarea didn't appear at ${here}. This usually happens when your signed-in session redirected away from the homepage — open ${URL} manually in that Chrome window (the homepage demo must be visible) and try again. Original error: ${e.message}`);
+  }
+
+  return { browser, context, page, sel, voice, ttsResponses, voicePicked: false, attached, verbose, keepOpen };
 }
 
 // Pick the named voice character. Done once per session (voice persists).
+// Defensive because the signed-in picker often differs from the anonymous one:
+// virtualized list, custom-voices first, possibly tabs/sections. So we (1) skip
+// if the trigger already shows the wanted voice, (2) search inside the popover,
+// (3) try exact then partial match, (4) scroll the list to load virtualized
+// options, (5) dump available names if still not found, (6) verify by reading
+// the trigger label after the click and surface a LOUD warning on mismatch.
 async function pickVoice(session) {
-  const { page, sel, voice } = session;
+  const { page, sel, voice, verbose } = session;
+  const wantedRe = new RegExp(`\\b${voice.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+
+  // Visibility helpers (no-ops unless verbose). Screenshots + a small dwell
+  // between steps so the user can SEE the picker move.
+  const shot = async (name) => {
+    if (!verbose) return;
+    const file = path.join(DEBUG_DIR, `picker-${name}.png`);
+    await page.screenshot({ path: file, fullPage: false }).catch(() => {});
+    log.info(`    📸 ${path.relative(ROOT, file)}`);
+  };
+  const dwell = async (ms = 900) => { if (verbose) await page.waitForTimeout(ms); };
+
+  const triggerLabel = async () =>
+    (await page.locator(sel.voiceButton).first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
+
+  // 1) Already on the right voice? Skip.
+  const before = await triggerLabel();
+  log.info(`  picker: trigger currently shows "${before}", want "${voice}"`);
+  if (wantedRe.test(before)) {
+    log.info(`  voice: ${voice} (already selected)`);
+    await shot('01-already-correct');
+    session.voicePicked = true;
+    return;
+  }
+  await shot('01-before');
+
+  // 2) Open the popover. Dismiss any late-appearing cookie banner + scroll the
+  //    voice button into view (a sticky top bar otherwise intercepts the click).
+  if (await dismissConsent(page)) log.info('  picker: dismissed cookie banner');
+  await page.locator(sel.voiceButton).first().scrollIntoViewIfNeeded().catch(() => {});
+  log.info('  picker: opening voice list…');
   await page.click(sel.voiceButton, { timeout: 8000 });
-  await page.locator(sel.voiceList).first().waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
+  const list = page.locator(sel.voiceList).first();
+  await list.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
+  await dwell();
+  await shot('02-picker-open');
 
-  // Filter the (virtualized) list via its search box when present.
-  const search = page.locator(sel.voiceSearch).first();
-  if (await search.count().catch(() => 0)) {
-    await search.fill(voice).catch(() => {});
-    await page.waitForTimeout(500);
+  // 3) Filter via a search box that is INSIDE the popover (avoid stray inputs).
+  const popoverSearch = list.locator('input, [role="searchbox"]').first();
+  if (await popoverSearch.count().catch(() => 0)) {
+    log.info(`  picker: typing "${voice}" into search…`);
+    await popoverSearch.fill(voice).catch(() => {});
+    await page.waitForTimeout(verbose ? 700 : 500);
+    await shot('03-after-search');
+  } else {
+    log.info('  picker: no search box, will scroll the list if needed');
   }
 
-  // The clickable element is the role=option, not the inner text node.
-  let opt = page.getByRole('option', { name: voice, exact: true }).first();
-  if (!(await opt.count().catch(() => 0))) {
-    opt = page.locator('[role="option"]').filter({ has: page.getByText(voice, { exact: true }) }).first();
+  // 4) Try to locate the option: exact role=option, then text-ancestor, then
+  //    prefix-match (handles "Alex - Conversational" / "Alex (Calm)" variants).
+  const findOption = async () => {
+    let o = page.getByRole('option', { name: voice, exact: true }).first();
+    if (await o.count().catch(() => 0)) return o;
+    o = list.locator('[role="option"]').filter({ has: page.getByText(voice, { exact: true }) }).first();
+    if (await o.count().catch(() => 0)) return o;
+    o = list.locator('[role="option"]', { hasText: new RegExp(`^\\s*${voice}\\b`, 'i') }).first();
+    return (await o.count().catch(() => 0)) ? o : null;
+  };
+
+  let opt = await findOption();
+
+  // 5) Scroll the virtualized list to discover more options if needed.
+  if (!opt) {
+    for (let i = 0; i < 14 && !opt; i++) {
+      await list.evaluate((el) => {
+        const scroller = el.querySelector('[data-rac][role="listbox"]') || el;
+        scroller.scrollBy(0, 400);
+      }).catch(async () => { await page.mouse.wheel(0, 400); });
+      await page.waitForTimeout(220);
+      opt = await findOption();
+    }
   }
-  if (!(await opt.count().catch(() => 0))) throw new Error(`voice "${voice}" not found in the picker`);
+
+  if (!opt) {
+    // 6) Diagnostic dump so the user can see what's actually in the picker.
+    const names = await list.locator('[role="option"]').allInnerTexts().catch(() => []);
+    const sample = [...new Set(names.map((n) => n.replace(/\s+/g, ' ').trim()).filter(Boolean))].slice(0, 12).join(' · ');
+    await shot('04-not-found');
+    if (!session.keepOpen) await page.keyboard.press('Escape').catch(() => {});
+    throw new Error(`voice "${voice}" not found in the picker (visible options: ${sample || '<none>'}). Try --show to inspect, or a different voice name.`);
+  }
+  log.info(`  picker: found option for "${voice}" — about to click`);
+  await shot('04-option-found');
+
+  // Capture what's CURRENTLY visible in the picker before we close it, so a
+  // verification failure can report a useful "available voices" diagnostic.
+  const visibleNames = [...new Set(
+    (await list.locator('[role="option"]').allInnerTexts().catch(() => []))
+      .map((n) => n.replace(/\s+/g, ' ').trim()).filter(Boolean)
+  )];
+
   await opt.scrollIntoViewIfNeeded().catch(() => {});
+  await dwell();
   await opt.click({ timeout: 8000 }).catch(async () => { await opt.click({ timeout: 4000, force: true }); });
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(verbose ? 800 : 300);
+  await shot('05-after-click');
+  // Only close the popover if we're not leaving the page open for inspection
+  // (with --show the user wants to see the post-click state).
+  if (!session.keepOpen) await page.keyboard.press('Escape').catch(() => {});
+  await page.waitForTimeout(500);
 
-  const label = (await page.locator(sel.voiceButton).first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
-  if (!new RegExp(`\\b${voice}\\b`, 'i').test(label)) log.warn(`  voice picker shows "${label}" (wanted "${voice}")`);
-  else log.info(`  voice: ${voice}`);
+  // 7) Verify: the trigger button should now show the picked voice. A mismatch
+  //    means the click landed on a wrong element / the popover didn't close —
+  //    fail loud rather than silently synth with the wrong voice.
+  const after = await triggerLabel();
+  await shot('06-final-trigger');
+  log.info(`  picker: trigger after click shows "${after}"`);
+  if (!wantedRe.test(after)) {
+    const sample = visibleNames.slice(0, 14).join(' · ');
+    throw new Error(`VOICE NOT APPLIED — wanted "${voice}", picker still shows "${after}". Available options in your picker: ${sample || '<none>'}. Pick one of those (npm run test:voice "<name>" --chrome) or re-run with --show to inspect.`);
+  } else {
+    log.info(`  voice: ${voice}`);
+  }
   session.voicePicked = true;
 }
 
@@ -181,6 +340,15 @@ export async function synthLine(session, text, { timeoutMs = AUDIO_TIMEOUT_MS } 
 }
 
 export async function closeSession(session) {
+  // With --show (keepOpen), leave the tab open for inspection. When ATTACHED
+  // to the user's Chrome, leave their context + browser alone either way;
+  // otherwise tear the whole thing down.
+  if (session.keepOpen && session.attached) {
+    log.info(`  (left the tab open in your Chrome — close it manually when done)`);
+    return;
+  }
+  try { await session.page.close(); } catch {}
+  if (session.attached) return;
   try { await session.context.close(); } catch {}
   try { await session.browser.close(); } catch {}
 }

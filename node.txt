@@ -9,9 +9,55 @@ focus
 
 
 
+npm run produce candles --voice=Alex
+
+# Form 1: equals sign (npm-safe, recommended)
+npm run produce macd --chrome --voice=Alex
+
+# Form 2: explicit -- separator (everything after -- is passed verbatim)
+npm run produce -- macd --chrome --voice Alex
+
+# Form 3: direct node (no npm interpretation at all)
+node scripts/produce.js macd --chrome --voice Alex
+
+
+
+
+
+
+
+
 npm run produce macd --voice Alex
+npm run produce macd --chrome --voice Alex
+
 
 npm run produce macd            # voice + SFX (full reel)
 npm run produce macd --mute     # SFX only, no voice (fast test — what I just ran)
 npm run produce macd --no-sfx   # disable SFX
 npm run produce macd --no-gifs   # skip overlays
+
+npm run produce ema-str-new -- --mute --skip-until=7
+
+
+AUDIO
+
+# Option A: attach to your running Chrome (recommended — no login, no auth file)
+npm run produce macd --chrome --voice Alex
+
+# Option B: one-time login to save a session, then reuse it
+npm run produce macd --login           # opens a window — sign in once
+npm run produce macd --voice Alex      # subsequent runs auto-use it
+
+# Option C: stay on the offline Windows voice (Alex isn't installed here)
+npm run produce macd --sapi --voice "Microsoft Zira Desktop"
+
+
+
+npm run produce macd --sapi --voice "Microsoft Zira Desktop"   # forced offline
+npm run produce macd --mute                                     # silent reel
+npm run produce macd --headed                                   # see Chrome
+npm run produce macd --no-gifs --no-sfx                         # minimal
+
+
+
+node scripts/test-voice.js Alex --chrome --show

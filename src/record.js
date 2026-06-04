@@ -59,25 +59,43 @@ const boxOf = (page, sel) =>
 // is no hard-coded FIT formula to drift out of sync.
 async function flowPosToScreen(page, flowPos) {
   return page.evaluate(({ fx, fy }) => {
-    const probe = document.querySelector('.react-flow__node');
-    if (!probe) return null;
-    const m1 = /translate\(([\d.\-]+)px,\s*([\d.\-]+)px\)/.exec(probe.style.transform || '');
-    if (!m1) return null;
-    const probeFlowX = parseFloat(m1[1]);
-    const probeFlowY = parseFloat(m1[2]);
-    const probeRect = probe.getBoundingClientRect();
+    const pane = document.querySelector('.react-flow__pane');
     const vp = document.querySelector('.react-flow__viewport');
-    if (!vp) return null;
-    let scale = 1;
-    const m2 = /matrix\(([\d.\-eE]+),/.exec(getComputedStyle(vp).transform);
-    if (m2) scale = parseFloat(m2[1]);
-    // probeRect.x = viewport_offset_x + probeFlowX * scale  →  solve for offset
-    const offX = probeRect.x - probeFlowX * scale;
-    const offY = probeRect.y - probeFlowY * scale;
-    // Click at the centre of where the new node will appear (probe size as proxy).
+    if (!pane || !vp) return null;
+    // Always-available scale + translate from the viewport's CSS matrix.
+    let scale = 1, tx = 0, ty = 0;
+    const mvp = /matrix\(([\d.\-eE]+),\s*0,\s*0,\s*([\d.\-eE]+),\s*([\d.\-eE]+),\s*([\d.\-eE]+)\)/.exec(getComputedStyle(vp).transform);
+    if (mvp) { scale = parseFloat(mvp[1]); tx = parseFloat(mvp[3]); ty = parseFloat(mvp[4]); }
+    // Default node half-size (flow units). If any node is already rendered, we
+    // use its bounding rect to compute the exact half-size + origin (which is
+    // more accurate than pane.x + tx because React Flow's viewport offset can
+    // differ from the pane origin slightly). On an EMPTY canvas (first add)
+    // we fall back to pane.x + tx and an assumed ~200×60 node.
+    let halfW = 100, halfH = 30;
+    let originX, originY;
+    const probe = document.querySelector('.react-flow__node');
+    if (probe) {
+      const m1 = /translate\(([\d.\-]+)px,\s*([\d.\-]+)px\)/.exec(probe.style.transform || '');
+      if (m1) {
+        const pfx = parseFloat(m1[1]);
+        const pfy = parseFloat(m1[2]);
+        const r = probe.getBoundingClientRect();
+        // probeRect.x = origin_x + pfx * scale  →  solve.
+        originX = r.x - pfx * scale;
+        originY = r.y - pfy * scale;
+        halfW = r.width / (2 * scale);
+        halfH = r.height / (2 * scale);
+      }
+    }
+    if (originX === undefined) {
+      // Empty-canvas branch: pane's screen origin + viewport's CSS translate.
+      const pr = pane.getBoundingClientRect();
+      originX = pr.x + tx;
+      originY = pr.y + ty;
+    }
     return {
-      x: Math.round(offX + fx * scale + probeRect.width / 2),
-      y: Math.round(offY + fy * scale + probeRect.height / 2),
+      x: Math.round(originX + (fx + halfW) * scale),
+      y: Math.round(originY + (fy + halfH) * scale),
     };
   }, { fx: flowPos.x, fy: flowPos.y });
 }

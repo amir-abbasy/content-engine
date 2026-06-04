@@ -28,7 +28,7 @@ import { composeReel, composeSimple, concatClips } from '../src/lib/compose.js';
 const AUTH_FILE = path.join(ROOT, '.eleven-auth.json');
 
 function parseArgs(argv) {
-  const a = { flow: null, login: false, voice: 'Alex', headed: false, sapi: false, mute: false, noSfx: false, noGifs: false, chromePort: null, skipUntil: null };
+  const a = { flow: null, login: false, voice: 'Alex', voiceExplicit: false, headed: false, sapi: false, mute: false, noSfx: false, noGifs: false, chromePort: null, skipUntil: null };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--login') a.login = true;
@@ -41,8 +41,41 @@ function parseArgs(argv) {
     else if (arg === '--chrome-port') a.chromePort = Number(argv[++i]) || 9222;
     else if (arg === '--skip-until') a.skipUntil = Number(argv[++i]) || null; // seed nodes 1..N, skip their adds/wires
     else if (/^--skip-until=/.test(arg)) a.skipUntil = Number(arg.slice(arg.indexOf('=') + 1)) || null;
-    else if (arg === '--voice') a.voice = argv[++i];
+    else if (arg === '--voice') { a.voice = argv[++i]; a.voiceExplicit = true; }
+    else if (/^--voice=/.test(arg)) { a.voice = arg.slice(arg.indexOf('=') + 1); a.voiceExplicit = true; }
     else if (!arg.startsWith('-') && !a.flow) a.flow = arg;
+  }
+  // npm strips most --flags from argv (it treats them as npm config) but exposes
+  // them as env vars `npm_config_<flag>`. So `npm run produce macd --voice=Alex`
+  // arrives here as argv=['macd'] + env.npm_config_voice='Alex'. Read both.
+  // CAVEAT: `--voice Alex` (no `=`) makes npm set npm_config_voice='true' and
+  // pass 'Alex' as a positional — so we ignore true/false values for voice.
+  const env = process.env;
+  const isBool = (v) => v === 'true' || v === 'false' || v === '';
+  if (!a.voiceExplicit && env.npm_config_voice && !isBool(env.npm_config_voice)) {
+    a.voice = env.npm_config_voice; a.voiceExplicit = true;
+  } else if (!a.voiceExplicit && isBool(env.npm_config_voice)) {
+    // The npm-eats-args trap — be loud about it.
+    console.warn(`\x1b[33m[produce] npm parsed --voice as a boolean (got "${env.npm_config_voice}"). Use --voice=<name> (with =) or invoke via "node scripts/produce.js ${process.argv.slice(2).join(' ')}".\x1b[0m`);
+  }
+  if (!a.chromePort && (env.npm_config_chrome === 'true' || env.npm_config_chrome === '')) {
+    a.chromePort = Number(env.CHROME_PORT) || 9222;
+  }
+  if (!a.chromePort && env.npm_config_chrome_port) a.chromePort = Number(env.npm_config_chrome_port) || 9222;
+  if (env.npm_config_sapi === 'true') a.sapi = true;
+  if (env.npm_config_mute === 'true' || env.npm_config_no_voice === 'true' || env.npm_config_no_audio === 'true') a.mute = true;
+  if (env.npm_config_headed === 'true') a.headed = true;
+  if (env.npm_config_no_sfx === 'true') a.noSfx = true;
+  if (env.npm_config_no_gifs === 'true') a.noGifs = true;
+  if (env.npm_config_login === 'true') a.login = true;
+  if (!a.skipUntil && env.npm_config_skip_until) a.skipUntil = Number(env.npm_config_skip_until) || null;
+
+  // Voice NAME drives engine selection. SAPI voice names start with "Microsoft "
+  // ("Microsoft Zira Desktop", etc); everything else is an ElevenLabs character.
+  // If the resolved voice isn't a SAPI voice and the user didn't opt out via
+  // --sapi/--mute, attach to Chrome (same path test-voice.js uses).
+  if (!a.sapi && !a.mute && !a.chromePort && !/^microsoft /i.test(a.voice)) {
+    a.chromePort = Number(env.CHROME_PORT) || 9222;
   }
   return a;
 }
@@ -50,6 +83,10 @@ function parseArgs(argv) {
 const args = parseArgs(process.argv.slice(2));
 const flow = args.flow || 'macd';
 const log = (m) => console.log(`\x1b[36m[produce]\x1b[0m ${m}`);
+log(`args: flow=${flow}, voice=${args.voice}, chromePort=${args.chromePort || 'none'}, sapi=${args.sapi}, mute=${args.mute}, headed=${args.headed}, raw=${JSON.stringify(process.argv.slice(2))}`);
+if (args.chromePort && !/^microsoft /i.test(args.voice) && !args.sapi) {
+  log(`voice "${args.voice}" → ElevenLabs (attaching Chrome on :${args.chromePort}). Pass --sapi to stay offline.`);
+}
 
 function node(scriptArgs, env = {}) {
   return new Promise((resolve, reject) => {

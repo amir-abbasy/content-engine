@@ -50,17 +50,48 @@ const extForContentType = (ct = '') => {
   return 'mp3'; // ElevenLabs serves mp3 by default
 };
 
-// Decode a captured TTS response into raw audio bytes. The /with-timestamps/
-// endpoint returns JSON { audio_base64, alignment }; /stream/ returns audio.
+// Decode a captured TTS response into raw audio bytes. ElevenLabs returns
+// audio in any of three shapes, all of which we handle:
+//   1. Raw audio bytes (content-type: audio/mpeg) — /stream/anonymous
+//   2. Single JSON object { audio_base64, alignment } — /with-timestamps/
+//   3. NDJSON stream — one JSON object per line, each with a slice of
+//      audio_base64 — /stream/with-timestamps/anonymous (the one the demo
+//      page actually uses). We concatenate all the chunks.
 function decodeTtsBody(buf, contentType) {
   const ct = (contentType || '').toLowerCase();
-  if (ct.includes('json')) {
-    const j = JSON.parse(buf.toString('utf8'));
-    const b64 = j.audio_base64 || j.audio || (j.data && j.data.audio_base64);
-    if (!b64) throw new Error('TTS JSON had no audio_base64 field');
-    return { buffer: Buffer.from(b64, 'base64'), ext: 'mp3', alignment: j.alignment || j.normalized_alignment || null };
+  if (!ct.includes('json')) {
+    return { buffer: buf, ext: extForContentType(ct), alignment: null };
   }
-  return { buffer: buf, ext: extForContentType(ct), alignment: null };
+  const text = buf.toString('utf8').trim();
+  // Shape (2): try as a single JSON object first.
+  try {
+    const j = JSON.parse(text);
+    const b64 = j.audio_base64 || j.audio || (j.data && j.data.audio_base64);
+    if (b64) return { buffer: Buffer.from(b64, 'base64'), ext: 'mp3', alignment: j.alignment || j.normalized_alignment || null };
+  } catch { /* probably NDJSON — try that next */ }
+  // Shape (3): NDJSON stream — split on newlines, concatenate every audio_base64.
+  const chunks = [];
+  let alignment = null;
+  let lines = 0, parsed = 0;
+  for (const line of text.split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t) continue;
+    lines++;
+    try {
+      const j = JSON.parse(t);
+      parsed++;
+      const b64 = j.audio_base64 || j.audio || (j.data && j.data.audio_base64);
+      if (b64) chunks.push(Buffer.from(b64, 'base64'));
+      const al = j.alignment || j.normalized_alignment;
+      if (al && !alignment) alignment = al;
+    } catch { /* skip malformed line */ }
+  }
+  if (chunks.length) {
+    return { buffer: Buffer.concat(chunks), ext: 'mp3', alignment };
+  }
+  // Nothing worked — surface enough detail to debug.
+  const preview = text.slice(0, 200).replace(/\s+/g, ' ');
+  throw new Error(`TTS JSON decode failed: parsed ${parsed}/${lines} lines, no audio_base64 found. First 200 chars: ${preview}`);
 }
 
 // Best-effort dismissal of the "We value your privacy" cookie dialog, plus any
@@ -109,10 +140,23 @@ export async function openSession({ headless = true, voice = 'Alex', selectors =
     // 127.0.0.1 avoids the IPv6 (::1) resolution that fails on some Windows
     // setups even when Chrome's debug port is listening on IPv4 only.
     const endpoint = `http://127.0.0.1:${chromePort}`;
+    const tryConnect = async () => playwright.chromium.connectOverCDP(endpoint);
     try {
-      browser = await playwright.chromium.connectOverCDP(endpoint);
+      browser = await tryConnect();
     } catch (e) {
-      throw new Error(`Could not attach to Chrome on ${endpoint} (${e.message}). Run "npm run chrome" to launch a Chrome with the debug port open, then sign in to ElevenLabs in that window.`);
+      // Auto-launch the helper Chrome (detached, so it outlives this process)
+      // and retry the attach. Removes the two-terminal dance — first run opens
+      // a Chrome window; you sign into ElevenLabs once and it stays.
+      log.warn(`  no Chrome on ${endpoint} — launching one for you (sign in once if needed)…`);
+      const { launchChromeDetached, waitForPort } = await import('./chrome.js');
+      try { launchChromeDetached({ port: chromePort }); } catch (e2) {
+        throw new Error(`Could not auto-launch Chrome: ${e2.message}. Set CHROME_PATH or run "npm run chrome" yourself.`);
+      }
+      if (!(await waitForPort(chromePort, 25_000))) {
+        throw new Error(`Auto-launched Chrome but ${endpoint} never came up. The window may still need a moment — try again, or run "npm run chrome" manually.`);
+      }
+      try { browser = await tryConnect(); }
+      catch (e3) { throw new Error(`Could not attach to Chrome on ${endpoint} after auto-launch (${e3.message}).`); }
     }
     // Re-use the existing default context so we inherit cookies (= the login).
     context = browser.contexts()[0] || (await browser.newContext());
@@ -126,6 +170,71 @@ export async function openSession({ headless = true, voice = 'Alex', selectors =
     log.step(`ElevenLabs: opening ${URL}${authFile && fs.existsSync(authFile) ? ' (signed in)' : ' (anonymous — will hit captcha)'}`);
   }
   const page = await context.newPage();
+
+  // Intercept fetch() inside the page so we can keep a copy of every TTS audio
+  // response — bypassing the CDP-attach limitation that response.body() returns
+  // empty when Chrome (not Playwright) owns the streaming body. Also keep the
+  // createObjectURL hook as a backup for any non-fetch audio paths.
+  //
+  // The clone-then-consume dance is the key: we clone the Response BEFORE
+  // returning it to the page, then asynchronously buffer the clone's bytes.
+  // The original Response is untouched, so the page's own audio playback works
+  // exactly as before; we just observe a parallel copy.
+  await page.addInitScript(() => {
+    try {
+      const w = window;
+      if (w.__elInstalled) return;
+      w.__elInstalled = true;
+      w.__elBlobs = [];    // createObjectURL records: { url, ts, size, type, audio }
+      w.__elFetches = [];  // fetch records:           { url, ts, b64, type }
+      // -- createObjectURL hook (kept as backup; harmless when not used) --
+      const origCreate = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = function (obj) {
+        const url = origCreate(obj);
+        try {
+          const type = obj && obj.type ? String(obj.type) : '';
+          const size = obj && typeof obj.size === 'number' ? obj.size : 0;
+          const audio = /^audio\//i.test(type) || (typeof MediaSource !== 'undefined' && obj instanceof MediaSource);
+          w.__elBlobs.push({ url, ts: Date.now(), size, type, audio });
+          if (w.__elBlobs.length > 50) w.__elBlobs.shift();
+        } catch {}
+        return url;
+      };
+      // -- fetch hook: clone TTS responses and buffer them as base64 --
+      const TTS = /\/v1\/text-to-speech\//i;
+      const bytesToB64 = (bytes) => {
+        let s = '';
+        for (let i = 0; i < bytes.length; i += 8192) {
+          s += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+        }
+        return btoa(s);
+      };
+      const origFetch = w.fetch.bind(w);
+      w.fetch = function (input, init) {
+        const url = (typeof input === 'string') ? input : (input && input.url) || '';
+        const isTts = typeof url === 'string' && TTS.test(url);
+        const p = origFetch(input, init);
+        if (!isTts) return p;
+        return p.then((resp) => {
+          try {
+            // Clone BEFORE returning to caller — once the page reads resp.body,
+            // cloning is no longer possible.
+            const clone = resp.clone();
+            const ct = (resp.headers.get('content-type') || '').toLowerCase();
+            clone.arrayBuffer().then((buf) => {
+              try {
+                const bytes = new Uint8Array(buf);
+                if (bytes.byteLength < 200) return;
+                w.__elFetches.push({ url, ts: Date.now(), b64: bytesToB64(bytes), type: ct, size: bytes.byteLength });
+                if (w.__elFetches.length > 20) w.__elFetches.shift();
+              } catch {}
+            }).catch(() => {});
+          } catch {}
+          return resp;
+        });
+      };
+    } catch {}
+  });
 
   // Capture every TTS response (or any audio response) with a timestamp.
   const ttsResponses = [];
@@ -309,8 +418,24 @@ export async function synthLine(session, text, { timeoutMs = AUDIO_TIMEOUT_MS } 
 
   if (!session.voicePicked) await pickVoice(session);
 
+  // Two timestamps — one Node-side (for filtering session.ttsResponses, which
+  // were stamped with Node's Date.now() inside page.on('response', ...)), and
+  // one page-side (for the createObjectURL hook installed via addInitScript,
+  // which stamps blobs with the page's Date.now()). Same machine, same wall
+  // clock — but keeping them separate avoids any cross-process drift.
   const sinceTs = Date.now();
+  const sinceTsPage = await page.evaluate(() => Date.now()).catch(() => sinceTs);
+  if (session.verbose) {
+    const file = path.join(DEBUG_DIR, 'picker-07-before-play.png');
+    await page.screenshot({ path: file }).catch(() => {});
+  }
   await page.click(sel.play, { timeout: 8000 });
+  if (session.verbose) {
+    await page.waitForTimeout(800);
+    const file = path.join(DEBUG_DIR, 'picker-08-after-play.png');
+    await page.screenshot({ path: file }).catch(() => {});
+    log.info(`  Play clicked — waiting up to ${Math.round(timeoutMs / 1000)}s for /v1/text-to-speech/…`);
+  }
 
   return await new Promise((resolve, reject) => {
     const deadline = Date.now() + timeoutMs;
@@ -318,9 +443,62 @@ export async function synthLine(session, text, { timeoutMs = AUDIO_TIMEOUT_MS } 
       const hit = session.ttsResponses.find((a) => a.ts >= sinceTs - 250 && TTS_URL.test(a.url));
       if (hit) {
         if (hit.status === 401 || hit.status === 403) {
-          return reject(new Error(`ElevenLabs returned ${hit.status} — anonymous TTS is hCaptcha-gated. Run "npm run vo <flow> --login" once to sign in, then retry.`));
+          return reject(new Error(`ElevenLabs returned ${hit.status} — anonymous/unauthenticated TTS is captcha-gated. Sign into ElevenLabs in the Chrome window that opened (the dedicated profile is fresh), then retry.`));
         }
         if (hit.status >= 200 && hit.status < 300) {
+          // Primary path (works in BOTH attach and direct-launch): the page's
+          // fetch() was wrapped at session-open; it now buffers a clone of
+          // every TTS response. ElevenLabs streams audio through MediaSource /
+          // Web Audio rather than via blob: URLs, so this is the only reliable
+          // way to recover the bytes when Chrome owns the response.
+          const captured = await page.evaluate((since) => {
+            const recent = (window.__elFetches || []).filter((f) => f.ts >= since - 500).sort((a, b) => b.ts - a.ts);
+            return recent[0] || null;
+          }, sinceTsPage).catch(() => null);
+          if (captured && captured.b64) {
+            const buf = Buffer.from(captured.b64, 'base64');
+            try {
+              const { buffer, ext, alignment } = decodeTtsBody(buf, captured.type || hit.ct);
+              if (buffer && buffer.length > 800) return resolve({ buffer, ext, alignment });
+              if (session.verbose) log.warn(`  decoded but result too small (${buffer ? buffer.length : 'no'} bytes) — falling back to other paths`);
+            } catch (e) {
+              // Surface the decode error so we don't silently fall through to
+              // a 60s timeout. The diagnostic in the timeout error will still
+              // fire if the fallbacks also fail.
+              session._lastDecodeErr = e.message;
+              if (session.verbose) log.warn(`  fetch-capture decode failed: ${e.message}`);
+            }
+          }
+          // Backup #1: pull from a blob the page just created. Some sites
+          // (not ElevenLabs at time of writing, but other TTS providers using
+          // this engine) do create real audio Blobs. Costs nothing to try.
+          const blob = await page.evaluate(async (since) => {
+            const all = (window.__elBlobs || []).filter((b) => b.ts >= since - 250);
+            const candidates = [
+              ...all.filter((b) => b.audio).sort((a, b) => b.ts - a.ts),
+              ...all.filter((b) => !b.audio).sort((a, b) => b.ts - a.ts),
+            ];
+            for (const c of candidates) {
+              try {
+                const r = await fetch(c.url);
+                if (!r.ok) continue;
+                const ab = await r.arrayBuffer();
+                if (ab.byteLength < 800) continue;
+                const ct = r.headers.get('content-type') || c.type || 'audio/mpeg';
+                if (!/^audio\//i.test(ct) && !c.audio) continue;
+                const bytes = new Uint8Array(ab);
+                let s = '';
+                for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+                return { b64: btoa(s), type: ct };
+              } catch { /* try next */ }
+            }
+            return null;
+          }, sinceTsPage).catch(() => null);
+          if (blob) {
+            const buffer = Buffer.from(blob.b64, 'base64');
+            if (buffer.length > 800) return resolve({ buffer, ext: extForContentType(blob.type), alignment: null });
+          }
+          // Backup #2 (works on direct-launch where Playwright owns the response).
           try {
             const body = await hit.resp.body();
             const { buffer, ext, alignment } = decodeTtsBody(body, hit.ct);
@@ -329,7 +507,48 @@ export async function synthLine(session, text, { timeoutMs = AUDIO_TIMEOUT_MS } 
         }
       }
       if (Date.now() > deadline) {
-        return reject(new Error('no usable TTS response captured (try --headed; site markup may have changed or a captcha appeared)'));
+        // Diagnostic dump on timeout: screenshot + everything we saw on the
+        // wire after Play, so the user can tell whether they're sitting on a
+        // captcha, a not-signed-in landing, or a stalled request.
+        if (session.verbose) {
+          const file = path.join(DEBUG_DIR, 'picker-09-timeout.png');
+          await page.screenshot({ path: file, fullPage: true }).catch(() => {});
+        }
+        const since = session.ttsResponses.filter((a) => a.ts >= sinceTs - 250);
+        const seen = since.length
+          ? since.slice(-8).map((a) => `${a.status} ${a.url.split('?')[0]}`).join(' | ')
+          : '<no TTS-like responses captured>';
+        const captcha = await page.locator('iframe[src*="hcaptcha"], iframe[src*="recaptcha"], iframe[title*="captcha" i]').count().catch(() => 0);
+        // Dump what the in-page hooks saw — tells us whether (a) hooks ran,
+        // (b) anything was captured since Play, (c) what their types/sizes
+        // look like. Critical for diagnosing why extraction failed when the
+        // server clearly returned audio.
+        const dump = await page.evaluate((since) => {
+          const out = {};
+          if (!window.__elInstalled) return { installed: false };
+          out.installed = true;
+          const blobs = (window.__elBlobs || []).filter((b) => b.ts >= since - 250);
+          out.blobs = blobs.length ? blobs.map((b) => `${b.type || '?'} ${b.size}B`).join(' · ') : '<none>';
+          const fets = (window.__elFetches || []).filter((f) => f.ts >= since - 500);
+          out.fets = fets.length ? fets.map((f) => `${f.type || '?'} ${f.size}B`).join(' · ') : '<none>';
+          out.allFets = (window.__elFetches || []).length;
+          return out;
+        }, sinceTsPage).catch((e) => ({ error: e.message }));
+        const blobsDump = dump.installed === false
+          ? '<hooks not installed — init script may not have run>'
+          : dump.error
+            ? `<page.evaluate failed: ${dump.error}>`
+            : `blobs=${dump.blobs}, fetches=${dump.fets} (${dump.allFets} total TTS fetches captured)`;
+        const url = page.url();
+        return reject(new Error(
+          `no usable TTS response after Play (${Math.round(timeoutMs / 1000)}s). ` +
+          `Page: ${url}. ` +
+          (captcha ? `A captcha frame is visible — solve it in the open Chrome window and retry. ` : '') +
+          `If the auto-launched Chrome (.chrome-profile/) is FRESH, sign into ElevenLabs in that window once and retry. ` +
+          `Last responses since Play: ${seen}. ` +
+          `Page captures since Play: ${blobsDump}.` +
+          (session._lastDecodeErr ? ` Decode error: ${session._lastDecodeErr}.` : '')
+        ));
       }
       setTimeout(tick, 300);
     };

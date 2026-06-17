@@ -1,1 +1,0 @@
-Let's build a complete MACD momentum strategy from scratch, wire it up, and run the backtest.

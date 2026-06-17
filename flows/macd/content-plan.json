@@ -1,39 +1,59 @@
 {
   "video": {
     "flow": "macd",
-    "title": "MACD Strategy Build",
-    "tone": "focused"
+    "title": "MACD Crossover Strategy Build",
+    "tone": "focus"
   },
   "build": {
     "voiceoverSegments": [
       {
-        "line": "We start by loading 1000 candles of price history, the foundation every strategy needs.",
+        "line": "We start by loading the last thousand candles of OHLCV data for the strategy to read.",
         "actionRef": "ohlcv_data",
         "emotion": "calm"
       },
       {
-        "line": "Next we add a MACD with fast 12, slow 26 and signal 9 to track momentum via EMA crossovers.",
+        "line": "Next we add a MACD with fast 12, slow 26 and signal 9 to measure momentum.",
         "actionRef": "ta_macd",
         "emotion": "focus"
       },
       {
-        "line": "We plot the MACD line in a vivid blue so its movement is clear on the chart.",
-        "actionRef": "plot_1",
+        "line": "Then we create a bullish trigger that fires when the MACD line crosses above its signal line.",
+        "actionRef": "crossover",
         "emotion": "precision"
       },
       {
-        "line": "Then we overlay the signal line in the same blue to see where it meets the MACD.",
-        "actionRef": "plot_2",
+        "line": "We also add a bearish trigger that fires when the MACD line crosses below the signal line.",
+        "actionRef": "crossunder",
+        "emotion": "focus"
+      },
+      {
+        "line": "We plot the MACD line in a soft gray so its movement is visible on the chart.",
+        "actionRef": "plot_1",
         "emotion": "calm"
       },
       {
-        "line": "Finally we draw the histogram, the difference between MACD and signal, to visualize momentum shifts.",
+        "line": "Next we draw the signal line in bright orange to contrast with the MACD.",
+        "actionRef": "plot_2",
+        "emotion": "focus"
+      },
+      {
+        "line": "Finally we plot the histogram in deep blue to show the divergence between them.",
         "actionRef": "plot_3",
+        "emotion": "calm"
+      },
+      {
+        "line": "We then run the strategy through the backtest engine to generate trades and performance stats.",
+        "actionRef": "strategy_run",
         "emotion": "excited"
+      },
+      {
+        "line": "Lastly we overlay the trade markers so you can see entries, exits and profit zones on the chart.",
+        "actionRef": "plot_trades",
+        "emotion": "focus"
       }
     ]
   },
   "outro": {
-    "voiceover": "You now see the MACD line, signal line and histogram plotted in blue, ready to backtest."
+    "voiceover": "You now see the MACD, signal line and histogram plotted with bullish and bearish triggers highlighted, ready to backtest."
   }
 }

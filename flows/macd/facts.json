@@ -1,11 +1,13 @@
 {
   "flow": "macd",
-  "generatedAt": "2026-05-25T13:37:50.786Z",
+  "generatedAt": "2026-06-09T14:07:30.061Z",
   "anchors": [
     {
       "semanticId": "ohlcv_data",
       "nodeKey": "ohlcv.data",
       "label": "Candles",
+      "meaning": "Get OHLCV trading data with multiple outputs",
+      "category": "Data Source",
       "execId": "1",
       "params": {
         "length": 1000
@@ -15,6 +17,8 @@
       "semanticId": "ta_macd",
       "nodeKey": "ta.macd",
       "label": "MACD",
+      "meaning": "Moving Average Convergence Divergence",
+      "category": "Momentum",
       "execId": "2",
       "params": {
         "fast": "12",
@@ -23,31 +27,74 @@
       }
     },
     {
+      "semanticId": "crossover",
+      "nodeKey": "crossover",
+      "label": "Crossover",
+      "meaning": "True when series A crosses above series B (was ≤ prev bar, now >)",
+      "category": "PineScript",
+      "execId": "3",
+      "params": {}
+    },
+    {
+      "semanticId": "crossunder",
+      "nodeKey": "crossunder",
+      "label": "Crossunder",
+      "meaning": "True when series A crosses below series B (was ≥ prev bar, now <)",
+      "category": "PineScript",
+      "execId": "4",
+      "params": {}
+    },
+    {
       "semanticId": "plot_1",
       "nodeKey": "plot",
       "label": "Plot",
-      "execId": "3",
+      "meaning": "Plot series on chart",
+      "category": "Plot",
+      "execId": "5",
       "params": {
-        "color": "#3b82f6"
+        "color": "#888888"
       }
     },
     {
       "semanticId": "plot_2",
       "nodeKey": "plot",
       "label": "Plot",
-      "execId": "4",
+      "meaning": "Plot series on chart",
+      "category": "Plot",
+      "execId": "6",
       "params": {
-        "color": "#3b82f6"
+        "color": "#ff9800"
       }
     },
     {
       "semanticId": "plot_3",
       "nodeKey": "plot",
       "label": "Plot",
-      "execId": "5",
+      "meaning": "Plot series on chart",
+      "category": "Plot",
+      "execId": "7",
       "params": {
-        "color": "#3b82f6"
+        "color": "#2962ff"
       }
+    },
+    {
+      "semanticId": "strategy_run",
+      "nodeKey": "strategy.run",
+      "label": "Strategy Run",
+      "meaning": "All-in-one backtest engine with full per-trade ledger, state series, payoff/Ulcer metrics. Drop-in upgrade for Trade Execution. Phase 1 of strategy framework.",
+      "category": "Strategy",
+      "execId": "8",
+      "params": {}
+    },
+    {
+      "semanticId": "plot_trades",
+      "nodeKey": "plot.trades",
+      "label": "Plot Trades",
+      "meaning": "Render trade overlays on the chart: position zones, SL/TP rails, MFE/MAE bands, entry/exit markers. Wire `trades` from STRATEGY.RUN/ENGINE/PAPER. Replaces the implicit auto-overlay; multiple PLOT.TRADES nodes can show different result sources side-by-side.",
+      "category": "Plot",
+      "execId": "9",
+      "params": {}
     }
-  ]
+  ],
+  "metrics": {}
 }

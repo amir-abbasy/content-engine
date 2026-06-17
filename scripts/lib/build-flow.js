@@ -75,6 +75,14 @@ export const STRATEGIES = {
 // Explicit paths in the strategy entry win (legacy ema keeps its old names).
 export function getStrategy(name = 'ema') {
   let s = STRATEGIES[name];
+  // A hardcoded entry whose source export no longer exists (e.g. legacy `ema`
+  // pointed at flows/complete-strategy.json, since deleted) must NOT shadow the
+  // zero-config convention. Drop back to discovery so a freshly-dropped
+  // flows/<name>.json / flow-<name>.json is picked up instead.
+  if (s && !existsSync(path.resolve(ROOT, s.src))) {
+    console.warn(`  ! strategy "${name}" src "${s.src}" is missing — falling back to flows/${name}.json convention`);
+    s = null;
+  }
   if (!s) {
     // Zero-config convention: drop flows/<name>.json (or flows/flow-<name>.json)
     // and `npm run flow <name>` just works — single-scene build, every node

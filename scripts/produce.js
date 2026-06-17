@@ -28,7 +28,7 @@ import { composeReel, composeSimple, concatClips } from '../src/lib/compose.js';
 const AUTH_FILE = path.join(ROOT, '.eleven-auth.json');
 
 function parseArgs(argv) {
-  const a = { flow: null, login: false, voice: 'Alex', voiceExplicit: false, headed: false, sapi: false, mute: false, noSfx: false, noGifs: false, chromePort: null, skipUntil: null };
+  const a = { flow: null, login: false, voice: 'Alex', voiceExplicit: false, headed: false, sapi: false, mute: false, noSfx: false, noGifs: false, chromePort: null, chromeHeadless: false, skipUntil: null };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--login') a.login = true;
@@ -38,6 +38,7 @@ function parseArgs(argv) {
     else if (arg === '--no-sfx') a.noSfx = true;         // skip sound effects
     else if (arg === '--no-gifs') a.noGifs = true;       // skip emotion gif overlays
     else if (arg === '--chrome') a.chromePort = Number(process.env.CHROME_PORT) || 9222;   // attach to running Chrome (no login)
+    else if (arg === '--chrome-headless') { a.chromePort = a.chromePort || Number(process.env.CHROME_PORT) || 9222; a.chromeHeadless = true; } // attach + run the helper Chrome headless
     else if (arg === '--chrome-port') a.chromePort = Number(argv[++i]) || 9222;
     else if (arg === '--skip-until') a.skipUntil = Number(argv[++i]) || null; // seed nodes 1..N, skip their adds/wires
     else if (/^--skip-until=/.test(arg)) a.skipUntil = Number(arg.slice(arg.indexOf('=') + 1)) || null;
@@ -62,6 +63,9 @@ function parseArgs(argv) {
     a.chromePort = Number(env.CHROME_PORT) || 9222;
   }
   if (!a.chromePort && env.npm_config_chrome_port) a.chromePort = Number(env.npm_config_chrome_port) || 9222;
+  if (env.npm_config_chrome_headless === 'true' || env.npm_config_chrome_headless === '') {
+    a.chromePort = a.chromePort || Number(env.CHROME_PORT) || 9222; a.chromeHeadless = true;
+  }
   if (env.npm_config_sapi === 'true') a.sapi = true;
   if (env.npm_config_mute === 'true' || env.npm_config_no_voice === 'true' || env.npm_config_no_audio === 'true') a.mute = true;
   if (env.npm_config_headed === 'true') a.headed = true;
@@ -83,7 +87,7 @@ function parseArgs(argv) {
 const args = parseArgs(process.argv.slice(2));
 const flow = args.flow || 'macd';
 const log = (m) => console.log(`\x1b[36m[produce]\x1b[0m ${m}`);
-log(`args: flow=${flow}, voice=${args.voice}, chromePort=${args.chromePort || 'none'}, sapi=${args.sapi}, mute=${args.mute}, headed=${args.headed}, raw=${JSON.stringify(process.argv.slice(2))}`);
+log(`args: flow=${flow}, voice=${args.voice}, chromePort=${args.chromePort || 'none'}, chromeHeadless=${args.chromeHeadless}, sapi=${args.sapi}, mute=${args.mute}, headed=${args.headed}, raw=${JSON.stringify(process.argv.slice(2))}`);
 if (args.chromePort && !/^microsoft /i.test(args.voice) && !args.sapi) {
   log(`voice "${args.voice}" → ElevenLabs (attaching Chrome on :${args.chromePort}). Pass --sapi to stay offline.`);
 }
@@ -178,7 +182,7 @@ async function main() {
   } else {
     // Pick the voice engine once and reuse it (one ElevenLabs session for all
     // lines). `auto` uses ElevenLabs when signed in, else the offline SAPI voice.
-    const voice = await createVoice({ provider: args.sapi ? 'local' : 'auto', authFile: AUTH_FILE, voice: args.voice, headless: !args.headed, chromePort: args.chromePort });
+    const voice = await createVoice({ provider: args.sapi ? 'local' : 'auto', authFile: AUTH_FILE, voice: args.voice, headless: !args.headed, chromePort: args.chromePort, chromeHeadless: args.chromeHeadless });
     log(`voiceover engine: ${voice.engine}${voice.engine === 'sapi' ? ' (offline — run "npm run produce ' + flow + ' --login" once for ElevenLabs)' : ''}`);
     try {
       for (const [i, seg] of plan.build.voiceoverSegments.entries()) {

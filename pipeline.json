@@ -19,32 +19,34 @@
       "jitter": 0.15,
       "scale": 1,
       "preActionPause": [
-        40,
-        90
+        220,
+        450
       ]
     },
     "autoZoom": {
       "enabled": true,
       "lockX": false,
       "restZoom": 1,
-      "focusZoom": 2,
+      "focusZoom": 2.4,
       "delayMs": 350,
-      "zoomMs": 500,
-      "zoomOutMs": 300,
-      "holdMs": 400,
-      "panMs": 250,
+      "zoomMs": 450,
+      "zoomOutMs": 280,
+      "holdMs": 700,
+      "panMs": 280,
+      "bounceMergeMs": 5500,
+      "bouncePanMs": 900,
       "ease": "cubic-in-out"
     },
     "cursor": {
       "movement": "human",
       "duration": [
-        140,
-        260
+        290,
+        450
       ],
       "overshoot": 0.12,
       "hesitation": [
-        25,
-        60
+        90,
+        170
       ],
       "curvature": 0.4
     }
@@ -151,23 +153,23 @@
       "autoCamera": true,
       "tracks": {
         "input": [
-          {"at":0.8,"type":"rightClick","selector":".react-flow__pane","position":{"x":1167,"y":232},"addsNodeId":6},
+          {"at":0.8,"type":"rightClick","selector":".react-flow__pane","position":{"x":1167,"y":232},"flowPos":{"x":2150,"y":120},"addsNodeId":6},
           {"at":1.8,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"greater than","focusZoom":2,"focusSession":6},
           {"at":4.2,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"Greater Than\"))"},
           {"at":6.7,"type":"drag","selector":".react-flow__node[data-id=\"2\"] .react-flow__handle[data-handleid=\"output-0\"]","toSelector":".react-flow__node[data-id=\"6\"] .react-flow__handle[data-handleid=\"input-0\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"6\"]"},
           {"at":8.7,"type":"drag","selector":".react-flow__node[data-id=\"3\"] .react-flow__handle[data-handleid=\"output-0\"]","toSelector":".react-flow__node[data-id=\"6\"] .react-flow__handle[data-handleid=\"input-1\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"6\"]"},
-          {"at":12.1,"type":"rightClick","selector":".react-flow__pane","position":{"x":1167,"y":532},"addsNodeId":7},
+          {"at":12.1,"type":"rightClick","selector":".react-flow__pane","position":{"x":1167,"y":532},"flowPos":{"x":2150,"y":560},"addsNodeId":7},
           {"at":13.1,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"less than","focusZoom":2,"focusSession":7},
           {"at":15.5,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"Less Than\"))"},
           {"at":18,"type":"drag","selector":".react-flow__node[data-id=\"2\"] .react-flow__handle[data-handleid=\"output-0\"]","toSelector":".react-flow__node[data-id=\"7\"] .react-flow__handle[data-handleid=\"input-0\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"7\"]"},
           {"at":20,"type":"drag","selector":".react-flow__node[data-id=\"3\"] .react-flow__handle[data-handleid=\"output-0\"]","toSelector":".react-flow__node[data-id=\"7\"] .react-flow__handle[data-handleid=\"input-1\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"7\"]"},
-          {"at":23.4,"type":"rightClick","selector":".react-flow__pane","position":{"x":1459,"y":382},"addsNodeId":8},
+          {"at":23.4,"type":"rightClick","selector":".react-flow__pane","position":{"x":1459,"y":382},"flowPos":{"x":2580,"y":340},"addsNodeId":8},
           {"at":24.4,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"strategy run","focusZoom":2,"focusSession":8},
           {"at":26.8,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"Strategy Run\"))"},
           {"at":29.3,"type":"drag","selector":".react-flow__node[data-id=\"6\"] .react-flow__handle[data-handleid=\"output-0\"]","toSelector":".react-flow__node[data-id=\"8\"] .react-flow__handle[data-handleid=\"input-1\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"8\"]"},
           {"at":31.3,"type":"drag","selector":".react-flow__node[data-id=\"7\"] .react-flow__handle[data-handleid=\"output-0\"]","toSelector":".react-flow__node[data-id=\"8\"] .react-flow__handle[data-handleid=\"input-2\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"8\"]"},
           {"at":33.3,"type":"drag","selector":".react-flow__node[data-id=\"1\"] .react-flow__handle[data-handleid=\"output-9\"]","toSelector":".react-flow__node[data-id=\"8\"] .react-flow__handle[data-handleid=\"input-0\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"8\"]"},
-          {"at":36.7,"type":"rightClick","selector":".react-flow__pane","position":{"x":1746,"y":382},"addsNodeId":9},
+          {"at":36.7,"type":"rightClick","selector":".react-flow__pane","position":{"x":1746,"y":382},"flowPos":{"x":3000,"y":340},"addsNodeId":9},
           {"at":37.7,"type":"fill","selector":"input[placeholder=\"Search nodes...\"]","text":"plot trades","focusZoom":2,"focusSession":9},
           {"at":40.1,"type":"click","selector":"[role=\"menuitem\"]:has(:text-is(\"Plot Trades\"))"},
           {"at":42.6,"type":"drag","selector":".react-flow__node[data-id=\"8\"] .react-flow__handle[data-handleid=\"output-1\"]","toSelector":".react-flow__node[data-id=\"9\"] .react-flow__handle[data-handleid=\"input-0\"]","focusZoom":1.6,"focusSelector":".react-flow__node[data-id=\"9\"]"},

@@ -38,19 +38,33 @@ export function isPortOpen(port = 9222, timeoutMs = 1500) {
 
 // Spawn Chrome detached so it OUTLIVES the parent (closing the terminal that
 // triggered the launch won't take Chrome with it). Returns the child handle.
-export function launchChromeDetached({ port = 9222, profile = DEFAULT_PROFILE, url = 'https://elevenlabs.io/' } = {}) {
+export function launchChromeDetached({ port = 9222, profile = DEFAULT_PROFILE, url = 'https://elevenlabs.io/', headless = false } = {}) {
   const chrome = findChrome();
   if (!chrome) throw new Error('Chrome not found. Set CHROME_PATH=<path to chrome.exe>.');
   fs.mkdirSync(profile, { recursive: true });
-  const child = spawn(chrome, [
+  const args = [
     `--remote-debugging-port=${port}`,
     `--user-data-dir=${profile}`,
     '--no-first-run',
     '--no-default-browser-check',
-    url,
-  ], { detached: true, stdio: 'ignore', windowsHide: false });
+  ];
+  // Headless reuse: only safe AFTER the profile has been signed in once (in a
+  // headed run) — the session cookies persist in the profile, so headless
+  // Chrome inherits the login. A FRESH profile can't be signed into headlessly,
+  // so the first --chrome run should stay headed.
+  if (headless) args.push('--headless=new', '--disable-gpu', '--window-size=1280,900');
+  args.push(url);
+  const child = spawn(chrome, args, { detached: true, stdio: 'ignore', windowsHide: false });
   child.unref(); // let parent exit independently of Chrome
   return child;
+}
+
+// True only if the dedicated debug profile already has data (= it's been
+// launched before, presumably to sign in). Used to warn on a headless first
+// run that could never authenticate.
+export function profileExists(profile = DEFAULT_PROFILE) {
+  try { return fs.existsSync(path.join(profile, 'Default')) || fs.existsSync(path.join(profile, 'Local State')); }
+  catch { return false; }
 }
 
 // Poll the debug port until it answers or `timeoutMs` elapses.

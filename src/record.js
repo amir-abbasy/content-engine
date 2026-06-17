@@ -160,6 +160,16 @@ async function resolveInputPoint(page, ev) {
   return { cx: box.x + pos.x, cy: box.y + pos.y };
 }
 
+// Recognise a React-Flow handle selector — used to bypass the cursor drag
+// and add the wire directly via window.__addEdge.
+const HANDLE_RE = /\.react-flow__node\[data-id="([^"]+)"\]\s+\.react-flow__handle\[data-handleid="(output|input)-(\d+)"\]/;
+
+// Recognise the "click a search-menu node entry" selector pattern emitted by
+// gen-pipeline. Combined with the preceding rightClick's addsNodeId, it tells
+// us a fresh node should now exist — and we can force it into place if the
+// menu click silently no-op'd (cursor missed the input, focus went stale, etc).
+const ADD_MENUITEM_RE = /\[role="menuitem"\]:has\(:text-is\(/;
+
 async function recordSession(pipeline, { headless, rawDir }) {
   const { browser, context, page, recordingStartedAt, fxConfig } = await launchRecorder({ pipeline, rawDir, headless });
   const rng = createRng(pipeline.record.humanize?.seed ?? 1);
@@ -205,6 +215,22 @@ async function recordSession(pipeline, { headless, rawDir }) {
       // right-clicking at the measured centre means the node lands exactly where
       // it's shown (no jump), and the camera that rests on it frames the right
       // spot. Done before the scene clock, so this probe isn't in the clip.
+      // Load the build fixture once per scene so dispatch can rebuild the
+      // canvas state via window.__injectFlow whenever a context-menu add
+      // silently fails (the platform's id counter and our gen-pipeline's
+      // numeric ids stay aligned only when every menuitem click really adds
+      // a node — if any miss, all subsequent selectors target nonexistent
+      // data-ids and everything cascades).
+      let buildFlowNodes = [];
+      const buildInject = (scene.setup || []).find((e) => e.type === 'injectFlow' && e.file && e.nodeCount === undefined);
+      if (buildInject) {
+        try {
+          const fp = path.resolve(buildInject.file);
+          const f = JSON.parse(fs.readFileSync(fp, 'utf8'));
+          if (Array.isArray(f.nodes)) buildFlowNodes = f.nodes;
+        } catch { /* missing/malformed — API resync just stays disabled */ }
+      }
+
       const addCenters = new Map();
       const addClicks = (scene.tracks?.input || []).filter((e) => e.type === 'rightClick' && e.addsNodeId != null);
       if (addClicks.length) {
@@ -274,6 +300,13 @@ async function recordSession(pipeline, { headless, rawDir }) {
       // are reserved track types (forward-compatible, runtime not yet built).
       const focusCache = new Map(); // focusGroup -> resolved point, so the
       // close-up stays pixel-locked (one position for the whole zoomed phase).
+      // API resync state — see buildFlowNodes load above. pendingAddId is set
+      // by a rightClick(addsNodeId=N) and consumed by the matching menuitem
+      // click that follows; appliedEdges mirrors the wires we've created via
+      // __addEdge so that a forced __injectFlow doesn't drop them.
+      let pendingAddId = null;
+      let appliedNodeCount = 0;
+      const appliedEdges = [];
       const dispatch = async (ev) => {
         if (ev._track === 'camera') {
           let pt;
@@ -359,6 +392,9 @@ async function recordSession(pipeline, { headless, rawDir }) {
             resolved = addCenters.get(String(ev.addsNodeId));
           }
           if (resolved) ev = { ...ev, point: resolved };
+          // Remember which node this rightClick is opening the menu for; the
+          // matching menuitem click that follows will trigger __injectFlow.
+          pendingAddId = Number(ev.addsNodeId);
         }
         // input track — also handle cameraFollow side-effect.
         if (ev.cameraFollow) {
@@ -376,6 +412,44 @@ async function recordSession(pipeline, { headless, rawDir }) {
         // Stamp the actual fire time (after the action completes — e.g. the
         // menu is open, the result is clicked) so the camera can anchor to it.
         if (typeof ev._idx === 'number') inputFireAbsMs[ev._idx] = Date.now() - recordingStartedAt;
+        // ── Post-action API resync ─────────────────────────────────────────
+        // The cursor narrative still plays out, but the actual state changes
+        // go through window.__injectFlow / window.__addEdge. That way a
+        // missed menu click or a handle-stacking drag failure doesn't
+        // desync the rest of the build.
+        if (ev.type === 'click' && ADD_MENUITEM_RE.test(ev.selector || '') && pendingAddId != null) {
+          const id = pendingAddId;
+          pendingAddId = null;
+          if (id > appliedNodeCount) appliedNodeCount = id;
+          if (buildFlowNodes.length >= appliedNodeCount) {
+            await page.waitForTimeout(120); // let the menu close + setNodes settle
+            await page.evaluate(({ nodes, edges }) => {
+              if (typeof window.__injectFlow === 'function') window.__injectFlow({ nodes, edges });
+            }, { nodes: buildFlowNodes.slice(0, appliedNodeCount), edges: appliedEdges }).catch(() => {});
+          }
+        }
+        if (ev.type === 'drag') {
+          const srcM = HANDLE_RE.exec(ev.selector || '');
+          const dstM = HANDLE_RE.exec(ev.toSelector || '');
+          if (srcM && dstM) {
+            const edge = {
+              source: srcM[1], sourceHandle: `${srcM[2]}-${srcM[3]}`,
+              target: dstM[1], targetHandle: `${dstM[2]}-${dstM[3]}`,
+              type: 'gradient',
+            };
+            await page.evaluate((e) => {
+              if (typeof window.__addEdge === 'function') window.__addEdge(e);
+            }, edge).catch(() => {});
+            // Replace any prior edge to the same target handle (mirrors
+            // __addEdge's own dedup) so the local mirror stays consistent.
+            for (let i = appliedEdges.length - 1; i >= 0; i--) {
+              if (appliedEdges[i].target === edge.target && appliedEdges[i].targetHandle === edge.targetHandle) {
+                appliedEdges.splice(i, 1);
+              }
+            }
+            appliedEdges.push(edge);
+          }
+        }
       };
 
       const sceneStartWall = Date.now();

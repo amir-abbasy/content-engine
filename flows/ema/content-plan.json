@@ -1,0 +1,59 @@
+{
+  "video": {
+    "flow": "ema",
+    "title": "EMA Crossover Strategy Build",
+    "tone": "focused"
+  },
+  "build": {
+    "voiceoverSegments": [
+      {
+        "line": "We start by loading the last thousand candles of price history, the foundation every strategy needs.",
+        "actionRef": "ohlcv_data",
+        "emotion": "calm"
+      },
+      {
+        "line": "Next we add a 9‑period EMA, giving more weight to recent prices for a fast trend line.",
+        "actionRef": "ta_ema_1",
+        "emotion": "focus"
+      },
+      {
+        "line": "Then we layer a 21‑period EMA, a slower average that smooths out short‑term noise.",
+        "actionRef": "ta_ema_2",
+        "emotion": "precision"
+      },
+      {
+        "line": "We plot the fast EMA in a bright blue line so its movement is easy to see.",
+        "actionRef": "plot_1",
+        "emotion": "calm"
+      },
+      {
+        "line": "We plot the slow EMA in the same bright blue, keeping the visual style consistent.",
+        "actionRef": "plot_2",
+        "emotion": "focus"
+      },
+      {
+        "line": "A crossover node fires whenever the fast EMA moves above the slow EMA, signalling a bullish trigger.",
+        "actionRef": "crossover",
+        "emotion": "excited"
+      },
+      {
+        "line": "A crossunder node triggers when the fast EMA falls below the slow EMA, marking a bearish signal.",
+        "actionRef": "crossunder",
+        "emotion": "focus"
+      },
+      {
+        "line": "We then run the strategy through a full backtest engine, generating a detailed trade ledger.",
+        "actionRef": "strategy_run",
+        "emotion": "precision"
+      },
+      {
+        "line": "Finally we overlay the trades on the chart, showing entry and exit markers for review.",
+        "actionRef": "plot_trades",
+        "emotion": "calm"
+      }
+    ]
+  },
+  "outro": {
+    "voiceover": "On the chart you now see the fast and slow EMAs plotted, crossover signals highlighted, and trade overlays displayed, ready to backtest."
+  }
+}

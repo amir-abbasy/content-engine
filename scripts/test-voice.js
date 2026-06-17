@@ -35,7 +35,7 @@ const DEFAULT_LINES = [
 ];
 
 function parseArgs(argv) {
-  const a = { text: null, voice: 'Alex', headed: false, sapi: false, doLogin: false, chromePort: null, out: null, show: false, count: 1 };
+  const a = { text: null, voice: 'Alex', headed: false, sapi: false, doLogin: false, chromePort: null, chromeHeadless: false, out: null, show: false, count: 1 };
   let positional = 0;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -44,6 +44,7 @@ function parseArgs(argv) {
     else if (arg === '--login') a.doLogin = true;
     else if (arg === '--show') a.show = true;      // verbose picker + screenshots + keep tab open
     else if (arg === '--chrome') a.chromePort = Number(process.env.CHROME_PORT) || 9222;
+    else if (arg === '--chrome-headless') { a.chromePort = a.chromePort || Number(process.env.CHROME_PORT) || 9222; a.chromeHeadless = true; }
     else if (arg === '--chrome-port') a.chromePort = Number(argv[++i]) || 9222;
     else if (arg === '--voice') a.voice = argv[++i];
     else if (/^--voice=/.test(arg)) a.voice = arg.slice(arg.indexOf('=') + 1);
@@ -61,6 +62,7 @@ function parseArgs(argv) {
   if (env.npm_config_text && !isBool(env.npm_config_text)) a.text = env.npm_config_text;
   if (env.npm_config_count && !isBool(env.npm_config_count)) a.count = Math.max(1, Number(env.npm_config_count) || 1);
   if (env.npm_config_chrome === 'true' || env.npm_config_chrome === '') a.chromePort = a.chromePort || (Number(env.CHROME_PORT) || 9222);
+  if (env.npm_config_chrome_headless === 'true' || env.npm_config_chrome_headless === '') { a.chromePort = a.chromePort || (Number(env.CHROME_PORT) || 9222); a.chromeHeadless = true; }
   if (env.npm_config_show === 'true') a.show = true;
   if (env.npm_config_sapi === 'true') a.sapi = true;
   if (env.npm_config_headed === 'true') a.headed = true;
@@ -95,7 +97,7 @@ if (args.show) {
 const t0 = Date.now();
 const voice = await createVoice({
   provider: args.sapi ? 'local' : 'auto',
-  authFile: AUTH_FILE, voice: args.voice, headless: !args.headed, chromePort: args.chromePort,
+  authFile: AUTH_FILE, voice: args.voice, headless: !args.headed, chromePort: args.chromePort, chromeHeadless: args.chromeHeadless,
   verbose: args.show, keepOpen: args.show,
 });
 console.log(`engine:  ${voice.engine}`);

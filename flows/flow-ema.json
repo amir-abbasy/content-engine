@@ -5,7 +5,7 @@
       "type": "customNode",
       "position": {
         "x": 40,
-        "y": 1188
+        "y": 540
       },
       "data": {
         "Name": "Candles",
@@ -104,16 +104,16 @@
       }
     },
     {
-      "id": "rsi_14",
+      "id": "ema_9",
       "type": "customNode",
       "position": {
         "x": 340,
-        "y": 1039
+        "y": 420
       },
       "data": {
-        "Name": "RSI",
-        "Description": "Relative Strength Index",
-        "Type": "Momentum",
+        "Name": "EMA",
+        "Description": "Exponential Moving Average",
+        "Type": "Overlap",
         "Inputs": [
           {
             "name": "close",
@@ -122,295 +122,70 @@
           {
             "name": "length",
             "type": "int",
-            "default": 14
+            "default": 9
           }
         ],
         "Outputs": [
           {
-            "name": "RSI",
+            "name": "EMA",
             "type": "array",
             "source": true
           }
         ],
-        "id": "rsi_14",
-        "nodeKey": "ta.rsi",
+        "id": "ema_9",
+        "nodeKey": "ta.ema",
         "isPlotNode": false,
         "isDrawingNode": false,
         "plotType": null,
         "plotConfig": null,
         "defaultConfig": null,
         "inputValues": {
-          "1": "14",
-          "length": "14"
+          "1": "9",
+          "length": "9"
         },
         "isCollapsed": false
       }
     },
     {
-      "id": "plot_rsi",
+      "id": "ema_21",
       "type": "customNode",
       "position": {
-        "x": 640,
-        "y": 713
+        "x": 340,
+        "y": 660
       },
       "data": {
-        "Name": "Plot",
-        "Description": "Plot series on chart",
-        "Type": "Plot",
+        "Name": "EMA",
+        "Description": "Exponential Moving Average",
+        "Type": "Overlap",
         "Inputs": [
           {
-            "name": "series",
-            "type": "array",
-            "target": true
+            "name": "close",
+            "type": "array"
           },
           {
-            "name": "condition",
-            "type": "array",
-            "target": true,
-            "optional": true
-          },
-          {
-            "name": "condition_2",
-            "type": "array",
-            "target": true,
-            "optional": true
-          },
-          {
-            "name": "condition_3",
-            "type": "array",
-            "target": true,
-            "optional": true
-          },
-          {
-            "name": "condition_4",
-            "type": "array",
-            "target": true,
-            "optional": true
-          },
-          {
-            "name": "baseline",
-            "type": "array",
-            "target": true,
-            "optional": true
-          }
-        ],
-        "Outputs": [],
-        "id": "plot_rsi",
-        "nodeKey": "plot",
-        "isPlotNode": true,
-        "isDrawingNode": false,
-        "plotType": "line",
-        "plotConfig": {
-          "type": "line",
-          "color": "#3b82f6",
-          "lineWidth": 2,
-          "dash": "solid",
-          "opacity": 1,
-          "baseline": {
-            "mode": "bottom",
-            "value": 0
-          },
-          "group": "rsi"
-        },
-        "defaultConfig": {
-          "type": "line",
-          "color": "#3b82f6",
-          "lineWidth": 2,
-          "dash": "solid",
-          "opacity": 1,
-          "baseline": {
-            "mode": "bottom",
-            "value": 0
-          },
-          "group": "rsi"
-        },
-        "inputValues": {
-          "group": "rsi",
-          "color": "#3b82f6",
-          "lineWidth": "2"
-        },
-        "isCollapsed": false
-      }
-    },
-    {
-      "id": "rsi_ob",
-      "type": "customNode",
-      "position": {
-        "x": 439.61214781526587,
-        "y": 1571.157165665104
-      },
-      "data": {
-        "Name": "H-Line",
-        "Description": "Horizontal reference line at a fixed value",
-        "Type": "Plot",
-        "Inputs": [],
-        "Outputs": [],
-        "id": "rsi_ob",
-        "nodeKey": "plot.hline",
-        "isPlotNode": true,
-        "isDrawingNode": false,
-        "plotType": "hline",
-        "plotConfig": {
-          "color": "#ef4444",
-          "lineWidth": 1,
-          "dash": "dashed",
-          "text": "",
-          "value": 70,
-          "group": "rsi"
-        },
-        "defaultConfig": {
-          "color": "#ef4444",
-          "lineWidth": 1,
-          "dash": "dashed",
-          "text": "",
-          "value": 70,
-          "group": "rsi"
-        },
-        "inputValues": {
-          "value": "70",
-          "group": "rsi",
-          "color": "#ef4444",
-          "dash": "dashed"
-        },
-        "isCollapsed": false
-      }
-    },
-    {
-      "id": "rsi_os",
-      "type": "customNode",
-      "position": {
-        "x": 641.51571656651,
-        "y": 1802.754395192499
-      },
-      "data": {
-        "Name": "H-Line",
-        "Description": "Horizontal reference line at a fixed value",
-        "Type": "Plot",
-        "Inputs": [],
-        "Outputs": [],
-        "id": "rsi_os",
-        "nodeKey": "plot.hline",
-        "isPlotNode": true,
-        "isDrawingNode": false,
-        "plotType": "hline",
-        "plotConfig": {
-          "color": "#22c55e",
-          "lineWidth": 1,
-          "dash": "dashed",
-          "text": "",
-          "value": 30,
-          "group": "rsi"
-        },
-        "defaultConfig": {
-          "color": "#22c55e",
-          "lineWidth": 1,
-          "dash": "dashed",
-          "text": "",
-          "value": 30,
-          "group": "rsi"
-        },
-        "inputValues": {
-          "value": "30",
-          "group": "rsi",
-          "color": "#22c55e",
-          "dash": "dashed"
-        },
-        "isCollapsed": false
-      }
-    },
-    {
-      "id": "rsi_cross_under_70",
-      "type": "customNode",
-      "position": {
-        "x": 640,
-        "y": 472
-      },
-      "data": {
-        "Name": "Crossunder",
-        "Description": "True when series A crosses below series B (was ≥ prev bar, now <)",
-        "Type": "PineScript",
-        "Inputs": [
-          {
-            "name": "a",
-            "type": "array",
-            "target": true,
-            "description": "Source series A"
-          },
-          {
-            "name": "b",
-            "type": "array",
-            "target": true,
-            "description": "Source series B",
-            "default": 70
+            "name": "length",
+            "type": "int",
+            "default": 21
           }
         ],
         "Outputs": [
           {
-            "name": "result",
+            "name": "EMA",
             "type": "array",
-            "source": true,
-            "description": "Boolean array — true at crossunder bars"
+            "source": true
           }
         ],
-        "id": "rsi_cross_under_70",
-        "nodeKey": "crossunder",
+        "id": "ema_21",
+        "nodeKey": "ta.ema",
         "isPlotNode": false,
         "isDrawingNode": false,
         "plotType": null,
         "plotConfig": null,
         "defaultConfig": null,
         "inputValues": {
-          "1": "70"
+          "1": "21",
+          "length": "21"
         },
-        "Icon": "↘",
-        "isCollapsed": false
-      }
-    },
-    {
-      "id": "rsi_cross_over_30",
-      "type": "customNode",
-      "position": {
-        "x": 640,
-        "y": 1390
-      },
-      "data": {
-        "Name": "Crossover",
-        "Description": "True when series A crosses above series B (was ≤ prev bar, now >)",
-        "Type": "PineScript",
-        "Inputs": [
-          {
-            "name": "a",
-            "type": "array",
-            "target": true,
-            "description": "Source series A"
-          },
-          {
-            "name": "b",
-            "type": "array",
-            "target": true,
-            "description": "Source series B",
-            "default": 30
-          }
-        ],
-        "Outputs": [
-          {
-            "name": "result",
-            "type": "array",
-            "source": true,
-            "description": "Boolean array — true at crossover bars"
-          }
-        ],
-        "id": "rsi_cross_over_30",
-        "nodeKey": "crossover",
-        "isPlotNode": false,
-        "isDrawingNode": false,
-        "plotType": null,
-        "plotConfig": null,
-        "defaultConfig": null,
-        "inputValues": {
-          "1": "30"
-        },
-        "Icon": "↗",
         "isCollapsed": false
       }
     },
@@ -419,18 +194,13 @@
       "type": "customNode",
       "position": {
         "x": 940,
-        "y": 592
+        "y": 540
       },
       "data": {
         "Name": "Strategy Run",
         "Description": "All-in-one backtest engine with full per-trade ledger, state series, payoff/Ulcer metrics. Drop-in upgrade for Trade Execution. Phase 1 of strategy framework.",
         "Type": "Strategy",
         "Inputs": [
-          {
-            "name": "market_data",
-            "type": "object",
-            "target": true
-          },
           {
             "name": "long_when",
             "type": "array",
@@ -507,10 +277,12 @@
         "plotConfig": null,
         "defaultConfig": null,
         "inputValues": {
-          "18": "0.02",
-          "19": "0.04",
+          "13": "True",
+          "17": "0.02",
+          "18": "0.05",
+          "allow_short": "True",
           "default_stop_pct": "0.02",
-          "default_take_pct": "0.04"
+          "default_take_pct": "0.05"
         },
         "Parameters": {
           "initial_capital": {
@@ -747,139 +519,169 @@
       }
     },
     {
-      "id": "buy_marker",
+      "id": "plot_ema9",
       "type": "customNode",
       "position": {
-        "x": 933.9371337339585,
-        "y": 1683.7927545070322
+        "x": 640,
+        "y": 180
       },
       "data": {
-        "Name": "Plot Shape",
-        "Description": "Plot shapes at signal points",
+        "Name": "Plot",
+        "Description": "Plot series on chart",
         "Type": "Plot",
         "Inputs": [
           {
-            "name": "condition",
+            "name": "series",
             "type": "array",
             "target": true
           },
           {
-            "name": "value",
+            "name": "condition",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_2",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_3",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_4",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "baseline",
             "type": "array",
             "target": true,
             "optional": true
           }
         ],
         "Outputs": [],
-        "id": "buy_marker",
-        "nodeKey": "plot.shape",
+        "id": "plot_ema9",
+        "nodeKey": "plot",
         "isPlotNode": true,
         "isDrawingNode": false,
-        "plotType": "shape",
+        "plotType": "line",
         "plotConfig": {
-          "type": "shape",
-          "style": "triangleup",
-          "location": "belowbar",
-          "size": 10,
-          "color": "#22c55e",
-          "offsetY": 12,
-          "marker": {
-            "style": "arrow_up"
+          "type": "line",
+          "color": "#3b82f6",
+          "lineWidth": 1,
+          "dash": "solid",
+          "opacity": 1,
+          "baseline": {
+            "mode": "bottom",
+            "value": 0
           },
-          "conditionRules": [
-            {
-              "color": "#26a69a"
-            }
-          ]
+          "overlay": true
         },
         "defaultConfig": {
-          "type": "shape",
-          "style": "triangleup",
-          "location": "belowbar",
-          "size": 10,
-          "color": "#22c55e",
-          "offsetY": 12,
-          "marker": {
-            "style": "arrow_up"
+          "type": "line",
+          "color": "#3b82f6",
+          "lineWidth": 1,
+          "dash": "solid",
+          "opacity": 1,
+          "baseline": {
+            "mode": "bottom",
+            "value": 0
           },
-          "conditionRules": [
-            {
-              "color": "#26a69a"
-            }
-          ]
+          "overlay": true
         },
         "inputValues": {
-          "color": "#22c55e",
-          "marker_style": "arrow_up"
+          "overlay": "true"
         },
         "isCollapsed": false
       }
     },
     {
-      "id": "sell_marker",
+      "id": "plot_ema21",
       "type": "customNode",
       "position": {
-        "x": 940,
-        "y": 186
+        "x": 640,
+        "y": 360
       },
       "data": {
-        "Name": "Plot Shape",
-        "Description": "Plot shapes at signal points",
+        "Name": "Plot",
+        "Description": "Plot series on chart",
         "Type": "Plot",
         "Inputs": [
           {
-            "name": "condition",
+            "name": "series",
             "type": "array",
             "target": true
           },
           {
-            "name": "value",
+            "name": "condition",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_2",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_3",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_4",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "baseline",
             "type": "array",
             "target": true,
             "optional": true
           }
         ],
         "Outputs": [],
-        "id": "sell_marker",
-        "nodeKey": "plot.shape",
+        "id": "plot_ema21",
+        "nodeKey": "plot",
         "isPlotNode": true,
         "isDrawingNode": false,
-        "plotType": "shape",
+        "plotType": "line",
         "plotConfig": {
-          "type": "shape",
-          "style": "triangleup",
-          "location": "belowbar",
-          "size": 10,
-          "color": "#ef4444",
-          "offsetY": 12,
-          "marker": {
-            "style": "arrow_down"
+          "type": "line",
+          "color": "#3b82f6",
+          "lineWidth": 1,
+          "dash": "solid",
+          "opacity": 1,
+          "baseline": {
+            "mode": "bottom",
+            "value": 0
           },
-          "conditionRules": [
-            {
-              "color": "#26a69a"
-            }
-          ]
+          "overlay": true
         },
         "defaultConfig": {
-          "type": "shape",
-          "style": "triangleup",
-          "location": "belowbar",
-          "size": 10,
-          "color": "#ef4444",
-          "offsetY": 12,
-          "marker": {
-            "style": "arrow_down"
+          "type": "line",
+          "color": "#3b82f6",
+          "lineWidth": 1,
+          "dash": "solid",
+          "opacity": 1,
+          "baseline": {
+            "mode": "bottom",
+            "value": 0
           },
-          "conditionRules": [
-            {
-              "color": "#26a69a"
-            }
-          ]
+          "overlay": true
         },
         "inputValues": {
-          "color": "#ef4444",
-          "marker_style": "arrow_down"
+          "overlay": "true"
         },
         "isCollapsed": false
       }
@@ -889,7 +691,7 @@
       "type": "customNode",
       "position": {
         "x": 1240,
-        "y": 908
+        "y": 540
       },
       "data": {
         "Name": "Plot Trades",
@@ -924,10 +726,20 @@
         "plotConfig": null,
         "defaultConfig": null,
         "inputValues": {
+          "2": "True",
           "3": "True",
           "4": "True",
+          "6": "#22c55e",
+          "7": "#ef4444",
+          "8": "#ef4444",
+          "9": "#22c55e",
+          "show_markers": "True",
           "show_position_zones": "True",
-          "show_sl_tp_rails": "True"
+          "show_sl_tp_rails": "True",
+          "win_color": "#22c55e",
+          "loss_color": "#ef4444",
+          "sl_color": "#ef4444",
+          "tp_color": "#22c55e"
         },
         "Parameters": {
           "show_markers": {
@@ -980,106 +792,182 @@
         "Icon": "📍",
         "isCollapsed": false
       }
+    },
+    {
+      "id": "buy_signal",
+      "type": "customNode",
+      "position": {
+        "x": 640,
+        "y": 540
+      },
+      "data": {
+        "Name": "Crossover",
+        "Description": "True when series A crosses above series B (was ≤ prev bar, now >)",
+        "Type": "PineScript",
+        "Inputs": [
+          {
+            "name": "a",
+            "type": "array",
+            "target": true,
+            "description": "Source series A"
+          },
+          {
+            "name": "b",
+            "type": "array",
+            "target": true,
+            "description": "Source series B"
+          }
+        ],
+        "Outputs": [
+          {
+            "name": "result",
+            "type": "array",
+            "source": true,
+            "description": "Boolean array — true at crossover bars"
+          }
+        ],
+        "id": "buy_signal",
+        "nodeKey": "crossover",
+        "isPlotNode": false,
+        "isDrawingNode": false,
+        "plotType": null,
+        "plotConfig": null,
+        "defaultConfig": null,
+        "inputValues": {},
+        "Icon": "↗",
+        "isCollapsed": false
+      }
+    },
+    {
+      "id": "sell_signal",
+      "type": "customNode",
+      "position": {
+        "x": 640,
+        "y": 720
+      },
+      "data": {
+        "Name": "Crossunder",
+        "Description": "True when series A crosses below series B (was ≥ prev bar, now <)",
+        "Type": "PineScript",
+        "Inputs": [
+          {
+            "name": "a",
+            "type": "array",
+            "target": true,
+            "description": "Source series A"
+          },
+          {
+            "name": "b",
+            "type": "array",
+            "target": true,
+            "description": "Source series B"
+          }
+        ],
+        "Outputs": [
+          {
+            "name": "result",
+            "type": "array",
+            "source": true,
+            "description": "Boolean array — true at crossunder bars"
+          }
+        ],
+        "id": "sell_signal",
+        "nodeKey": "crossunder",
+        "isPlotNode": false,
+        "isDrawingNode": false,
+        "plotType": null,
+        "plotConfig": null,
+        "defaultConfig": null,
+        "inputValues": {},
+        "Icon": "↘",
+        "isCollapsed": false
+      }
     }
   ],
   "edges": [
     {
       "source": "md",
       "sourceHandle": "output-3",
-      "target": "rsi_14",
+      "target": "ema_9",
       "targetHandle": "input-0",
-      "id": "mdoutput-3-rsi_14input-0-1779619213209-yaiz8kdul"
-    },
-    {
-      "source": "rsi_14",
-      "sourceHandle": "output-0",
-      "target": "plot_rsi",
-      "targetHandle": "input-0",
-      "id": "rsi_14output-0-plot_rsiinput-0-1779619213209-r6lt6gbu3"
-    },
-    {
-      "source": "rsi",
-      "sourceHandle": "output-0",
-      "target": "plot_rsi",
-      "targetHandle": "input-0",
-      "id": "rsioutput-0-plot_rsiinput-0-1779619213209-5ziau94sr"
-    },
-    {
-      "source": "rsi",
-      "sourceHandle": "output-0",
-      "target": "rsi_ob",
-      "targetHandle": "input-0",
-      "id": "rsioutput-0-rsi_obinput-0-1779619213209-72n21na35"
-    },
-    {
-      "source": "rsi",
-      "sourceHandle": "output-0",
-      "target": "rsi_os",
-      "targetHandle": "input-0",
-      "id": "rsioutput-0-rsi_osinput-0-1779619213209-kli5rv3ep"
-    },
-    {
-      "source": "rsi_14",
-      "sourceHandle": "output-0",
-      "target": "rsi_cross_under_70",
-      "targetHandle": "input-0",
-      "id": "rsi_14output-0-rsi_cross_under_70input-0-1779619213209-obm7a5d46"
-    },
-    {
-      "source": "rsi_14",
-      "sourceHandle": "output-0",
-      "target": "rsi_cross_over_30",
-      "targetHandle": "input-0",
-      "id": "rsi_14output-0-rsi_cross_over_30input-0-1779619213209-0nwj4vxdr"
+      "id": "mdoutput-3-ema_9input-0-1780669456497-axh9ziioy"
     },
     {
       "source": "md",
       "sourceHandle": "output-3",
-      "target": "bt",
+      "target": "ema_21",
       "targetHandle": "input-0",
-      "id": "mdoutput-3-btinput-0-1779619213209-mf46c89on"
+      "id": "mdoutput-3-ema_21input-0-1780669456497-jtkr1h2pk"
     },
     {
-      "source": "rsi_cross_over_30",
+      "source": "buy_signal",
+      "sourceHandle": "output-0",
+      "target": "bt",
+      "targetHandle": "input-0",
+      "id": "buy_signaloutput-0-btinput-0-1780669456497-6j0zqdw7m"
+    },
+    {
+      "source": "sell_signal",
       "sourceHandle": "output-0",
       "target": "bt",
       "targetHandle": "input-1",
-      "id": "rsi_cross_over_30output-0-btinput-1-1779619213209-l7q35psr3"
+      "id": "sell_signaloutput-0-btinput-1-1780669456497-llq2f8zrj"
     },
     {
-      "source": "rsi_cross_under_70",
+      "source": "ema_9",
       "sourceHandle": "output-0",
-      "target": "bt",
-      "targetHandle": "input-2",
-      "id": "rsi_cross_under_70output-0-btinput-2-1779619213209-1e8ng4xfi"
-    },
-    {
-      "source": "rsi_cross_over_30",
-      "sourceHandle": "output-0",
-      "target": "buy_marker",
+      "target": "plot_ema9",
       "targetHandle": "input-0",
-      "id": "rsi_cross_over_30output-0-buy_markerinput-0-1779619213209-e4ql8ulvl"
+      "id": "ema_9output-0-plot_ema9input-0-1780669456497-vih007hmk"
     },
     {
-      "source": "rsi_cross_under_70",
+      "source": "ema_21",
       "sourceHandle": "output-0",
-      "target": "sell_marker",
+      "target": "plot_ema21",
       "targetHandle": "input-0",
-      "id": "rsi_cross_under_70output-0-sell_markerinput-0-1779619213209-81hmfis6o"
+      "id": "ema_21output-0-plot_ema21input-0-1780669456497-2ek94f0ln"
     },
     {
       "source": "bt",
       "sourceHandle": "output-1",
       "target": "plot_trades",
       "targetHandle": "input-0",
-      "id": "btoutput-1-plot_tradesinput-0-1779619213209-bhbeoh1hh"
+      "id": "btoutput-1-plot_tradesinput-0-1780669456497-3bthq8ewg"
     },
     {
       "source": "bt",
       "sourceHandle": "output-0",
       "target": "plot_trades",
       "targetHandle": "input-1",
-      "id": "btoutput-0-plot_tradesinput-1-1779619213209-ausf2zw0q"
+      "id": "btoutput-0-plot_tradesinput-1-1780669456497-1xrfop1c5"
+    },
+    {
+      "source": "ema_9",
+      "sourceHandle": "output-0",
+      "target": "buy_signal",
+      "targetHandle": "input-0",
+      "id": "ema_9output-0-buy_signalinput-0-1780669456497-5sjn0wsql"
+    },
+    {
+      "source": "ema_21",
+      "sourceHandle": "output-0",
+      "target": "buy_signal",
+      "targetHandle": "input-1",
+      "id": "ema_21output-0-buy_signalinput-1-1780669456497-70i640p74"
+    },
+    {
+      "source": "ema_9",
+      "sourceHandle": "output-0",
+      "target": "sell_signal",
+      "targetHandle": "input-0",
+      "id": "ema_9output-0-sell_signalinput-0-1780669456497-kkddqiyos"
+    },
+    {
+      "source": "ema_21",
+      "sourceHandle": "output-0",
+      "target": "sell_signal",
+      "targetHandle": "input-1",
+      "id": "ema_21output-0-sell_signalinput-1-1780669456497-iab7nd2m6"
     }
   ]
 }

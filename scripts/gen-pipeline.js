@@ -32,6 +32,25 @@ const T = {
   rcToFill: 1.0, fillToClick: 2.4, clickToConfig: 1.1,
   blockGap: 1.4, dragGap: 2.0, lastDragToExecute: 3.0, executeToEnd: 4.5,
 };
+// Per-event focus-zoom levels. Each hotspot type frames a different-sized
+// target, so they want different zoom levels — int fields are tiny so they
+// need the tightest crop, search/colour dialogs are mid-size, wires span
+// two nodes so the auto-camera will fit them at min(this, framePair-fit).
+// Tune here when a flow's nodes are unusually large/small; flow-agnostic
+// defaults that have worked across ema/rsi/macd/candles.
+const Z = {
+  search:   2.6,  // node-library search popover
+  intInput: 3.0,  // numeric field inside a node (smallest UI)
+  arrInput: 3.0,  // array/threshold operand (crossover, crossunder)
+  colorDlg: 2.6,  // colour-picker dialog
+  wireDrag: 2.6,  // wire connection between two handles
+};
+// Duration the camera lingers on each tight crop before the cursor moves on.
+const D = {
+  intInput: 2.4,
+  arrInput: 2.4,
+  colorDlg: 1.6,
+};
 // Observed deterministic fit — only the right-click FALLBACK position; at record
 // time `addsNodeId` re-measures each node's true centre and overrides this.
 const FIT = { scale: 0.681211, tx: -343.068, ty: 72.0764, ox: 5, oy: 48 };
@@ -65,19 +84,19 @@ function configSteps(node, id) {
   (d.Inputs || []).filter((i) => i.type === 'int').forEach((inp, k) => {
     const idx = d.Inputs.indexOf(inp);
     const v = iv[inp.name] ?? iv[String(idx)] ?? inp.default;
-    if (v != null) out.push({ type: 'fill', selector: `${pre} input[placeholder="int"]`, nth: k, text: String(v), focusZoom: 2.4, _dur: 1.8 });
+    if (v != null) out.push({ type: 'fill', selector: `${pre} input[placeholder="int"]`, nth: k, text: String(v), focusZoom: Z.intInput, _dur: D.intInput });
   });
   // crossover/crossunder threshold (the "b" operand shows as input[placeholder="array"])
   if (d.nodeKey === 'crossover' || d.nodeKey === 'crossunder') {
     const v = iv['1'] ?? d.Inputs?.[1]?.default;
-    if (v != null) out.push({ type: 'fill', selector: `${pre} input[placeholder="array"]`, text: String(v), focusZoom: 2.4, _dur: 1.8 });
+    if (v != null) out.push({ type: 'fill', selector: `${pre} input[placeholder="array"]`, text: String(v), focusZoom: Z.arrInput, _dur: D.arrInput });
   }
   // plot colour: open the swatch, pick from the palette (the picker carries a
   // fixed set of hex swatches; the flow's colours are in it).
   if (d.isPlotNode && d.plotConfig?.color) {
     const color = String(d.plotConfig.color).toLowerCase();
-    out.push({ type: 'click', selector: `${pre} .aspect-square`, focusZoom: 2.0, focusSelector: '[role="dialog"]', _dur: 1.2 });
-    out.push({ type: 'click', selector: `[role="dialog"] button[title="${color}"]`, _dur: 1.2 });
+    out.push({ type: 'click', selector: `${pre} .aspect-square`, focusZoom: Z.colorDlg, focusSelector: '[role="dialog"]', _dur: D.colorDlg });
+    out.push({ type: 'click', selector: `[role="dialog"] button[title="${color}"]`, _dur: D.colorDlg });
   }
   return out;
 }
@@ -139,7 +158,7 @@ function processIds(idsToAdd, addedSoFar, startT = T.firstAddAt) {
     // current layout (auto-fit, post-execute pane resize, repositioned strategy
     // nodes, etc.). `position` is kept as a last-ditch FIT-based fallback.
     input.push({ at: r1(rcAt), type: 'rightClick', selector: '.react-flow__pane', position: fallbackPos(n), flowPos: { x: n.position.x, y: n.position.y }, addsNodeId: Number(id) });
-    input.push({ at: r1(fillAt), type: 'fill', selector: SEARCH, text: searchText(n), focusZoom: 2.0, focusSession: ses });
+    input.push({ at: r1(fillAt), type: 'fill', selector: SEARCH, text: searchText(n), focusZoom: Z.search, focusSession: ses });
     // Match the menu item by EXACT leaf text, so e.g. "RSI" doesn't hit "CRSI"
     // and "Plot" doesn't hit "Plot Trades".
     input.push({ at: r1(clickAt), type: 'click', selector: `[role="menuitem"]:has(:text-is("${menuLabel(n)}"))` });
@@ -160,7 +179,7 @@ function processIds(idsToAdd, addedSoFar, startT = T.firstAddAt) {
     const ready = pending.filter((e) => added.has(e.source) && added.has(e.target));
     let dt = ct + T.blockGap;
     for (const e of ready) {
-      input.push({ at: r1(dt), type: 'drag', selector: handleSel(e.source, e.sourceHandle), toSelector: handleSel(e.target, e.targetHandle), focusZoom: 1.6, focusSelector: nodeSel(e.target) });
+      input.push({ at: r1(dt), type: 'drag', selector: handleSel(e.source, e.sourceHandle), toSelector: handleSel(e.target, e.targetHandle), focusZoom: Z.wireDrag, focusSelector: nodeSel(e.target) });
       pending.splice(pending.indexOf(e), 1);
       dt += T.dragGap;
       dragCount++;
@@ -192,7 +211,7 @@ const combined = {
 // the per-node loop drains as it goes), then click Execute. One execute at
 // the very end runs the indicators AND the backtest in one pass.
 for (const e of pending.filter((edge) => combined.added.has(edge.source) && combined.added.has(edge.target))) {
-  combined.input.push({ at: r1(combined.t), type: 'drag', selector: handleSel(e.source, e.sourceHandle), toSelector: handleSel(e.target, e.targetHandle), focusZoom: 1.6, focusSelector: nodeSel(e.target) });
+  combined.input.push({ at: r1(combined.t), type: 'drag', selector: handleSel(e.source, e.sourceHandle), toSelector: handleSel(e.target, e.targetHandle), focusZoom: Z.wireDrag, focusSelector: nodeSel(e.target) });
   pending.splice(pending.indexOf(e), 1);
   combined.t += T.dragGap; combined.dragCount++;
 }
@@ -268,7 +287,12 @@ if (CONFIG.mode === 'single') {
   scene.setup = setup;
   scene.durationSec = durationSec;
   scene.tracks = scene.tracks || {};
-  scene.tracks.input = input;
+  // SPLIT mode splices the freshly-built track into an existing pipeline scene.
+  // The track lives on `combined.input` (the merged phaseA+phaseB events); a bare
+  // `input` only exists inside processIds() and is out of scope here — that was a
+  // latent ReferenceError that broke every split-mode regen (e.g. `ema`).
+  scene.tracks.input = combined.input;
+  if (combined.attention && combined.attention.length) scene.tracks.attention = combined.attention;
   writeFileSync(outPath, serialize(pipeline) + '\n');
   console.log(`updated ${CONFIG.pipelineOut} scene "${CONFIG.sceneId}"`);
 }

@@ -152,6 +152,10 @@ export async function runEvent(ev, ctx) {
       const base = ctx.page.locator(ev.selector);
       const loc = ev.nth !== undefined ? base.nth(ev.nth) : base.first();
       await loc.fill('', { timeout: ev.timeoutMs ?? ACTION_TIMEOUT_MS });
+      // Mouse-click can land on stale popups when menus re-render; explicit
+      // .focus() guarantees the intended input owns the upcoming keystrokes,
+      // even if a freshly-mounted dropdown's input wasn't the click target.
+      await loc.focus({ timeout: ev.timeoutMs ?? ACTION_TIMEOUT_MS });
       const text = ev.text ?? '';
       const keyDelay = ev.delay; // optional override
       for (const ch of text) {
@@ -186,11 +190,22 @@ export async function runEvent(ev, ctx) {
     }
 
     case 'drag': {
-      // Wire up an edge (or move anything): press the source, glide to the
-      // destination while held, release. `toSelector` resolves the target
-      // element (e.g. a target handle); `to` is absolute coords. `position` /
-      // `toPosition` offset within each element. For React Flow handles, give
-      // the source output handle and target input handle.
+      // Handle-to-handle wires no longer rely on a real mouse drag landing on
+      // the right output/input — record.js fires window.__addEdge right after
+      // this returns, which adds the wire directly into React Flow regardless
+      // of viewport state or stacked handle hit-tests. We still drive the
+      // cursor for the visual story; the actual mouse press only matters for
+      // non-handle drags (e.g. the chart-reveal pan).
+      const srcM = HANDLE_RE.exec(ev.selector || '');
+      const dstM = HANDLE_RE.exec(ev.toSelector || '');
+      if (srcM && dstM) {
+        const from = await resolveDragPoint(ctx.page, ev.selector, ev).catch(() => null);
+        const to = await resolveDragPoint(ctx.page, ev.toSelector, { nth: ev.toNth, position: ev.toPosition, timeoutMs: ev.timeoutMs }).catch(() => null);
+        if (from) { await ctx.cursor.moveTo(from.x, from.y); await ctx.cursor.hesitate(); }
+        if (to)   { await ctx.cursor.moveTo(to.x,   to.y);   await ctx.cursor.hesitate(); }
+        return;
+      }
+      // Classic mouse drag for non-handle drags (positional moves).
       const from = await resolveDragPoint(ctx.page, ev.selector, ev);
       let to;
       if (ev.toSelector) {

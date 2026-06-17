@@ -1,6 +1,6 @@
 {
-  "flow": "ema-str-new",
-  "generatedAt": "2026-06-04T16:16:48.751Z",
+  "flow": "ema",
+  "generatedAt": "2026-06-05T14:34:10.940Z",
   "anchors": [
     {
       "semanticId": "ohlcv_data",
@@ -21,7 +21,7 @@
       "category": "Overlap",
       "execId": "2",
       "params": {
-        "length": 20
+        "length": "9"
       }
     },
     {
@@ -32,34 +32,47 @@
       "category": "Overlap",
       "execId": "3",
       "params": {
-        "length": "40"
+        "length": "21"
       }
     },
     {
       "semanticId": "plot_1",
       "nodeKey": "plot",
       "label": "Plot",
-      "meaning": "Plot series with full styling control (line, area, histogram, columns, cross, circles, stepline)",
+      "meaning": "Plot series on chart",
       "category": "Plot",
       "execId": "4",
-      "params": {}
-    },
-    {
-      "semanticId": "np_greater",
-      "nodeKey": "np.greater",
-      "label": "Greater Than",
-      "meaning": "Return the truth value of (x1 > x2) element-wise. Either operand may be a direct numeric value — no CONSTANT node needed.",
-      "category": "Comparison Function",
-      "execId": "5",
-      "params": {}
+      "params": {
+        "color": "#3b82f6"
+      }
     },
     {
       "semanticId": "plot_2",
       "nodeKey": "plot",
       "label": "Plot",
-      "meaning": "Plot series with full styling control (line, area, histogram, columns, cross, circles, stepline)",
+      "meaning": "Plot series on chart",
       "category": "Plot",
+      "execId": "5",
+      "params": {
+        "color": "#3b82f6"
+      }
+    },
+    {
+      "semanticId": "crossover",
+      "nodeKey": "crossover",
+      "label": "Crossover",
+      "meaning": "True when series A crosses above series B (was ≤ prev bar, now >)",
+      "category": "PineScript",
       "execId": "6",
+      "params": {}
+    },
+    {
+      "semanticId": "crossunder",
+      "nodeKey": "crossunder",
+      "label": "Crossunder",
+      "meaning": "True when series A crosses below series B (was ≥ prev bar, now <)",
+      "category": "PineScript",
+      "execId": "7",
       "params": {}
     },
     {
@@ -68,7 +81,7 @@
       "label": "Strategy Run",
       "meaning": "All-in-one backtest engine with full per-trade ledger, state series, payoff/Ulcer metrics. Drop-in upgrade for Trade Execution. Phase 1 of strategy framework.",
       "category": "Strategy",
-      "execId": "7",
+      "execId": "8",
       "params": {}
     },
     {
@@ -77,7 +90,7 @@
       "label": "Plot Trades",
       "meaning": "Render trade overlays on the chart: position zones, SL/TP rails, MFE/MAE bands, entry/exit markers. Wire `trades` from STRATEGY.RUN/ENGINE/PAPER. Replaces the implicit auto-overlay; multiple PLOT.TRADES nodes can show different result sources side-by-side.",
       "category": "Plot",
-      "execId": "8",
+      "execId": "9",
       "params": {}
     }
   ],

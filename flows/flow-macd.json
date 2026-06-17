@@ -5,7 +5,7 @@
       "type": "customNode",
       "position": {
         "x": 40,
-        "y": 1104
+        "y": 1167
       },
       "data": {
         "Name": "Candles",
@@ -108,7 +108,7 @@
       "type": "customNode",
       "position": {
         "x": 340,
-        "y": 1148
+        "y": 1211
       },
       "data": {
         "Name": "MACD",
@@ -171,170 +171,419 @@
       }
     },
     {
-      "id": "plot_macd",
+      "id": "buy_sig",
       "type": "customNode",
       "position": {
         "x": 640,
-        "y": 564
+        "y": 767
       },
       "data": {
-        "Name": "Plot",
-        "Description": "Plot series on chart",
-        "Type": "Plot",
+        "Name": "Crossover",
+        "Description": "True when series A crosses above series B (was ≤ prev bar, now >)",
+        "Type": "PineScript",
         "Inputs": [
           {
-            "name": "series",
-            "type": "array",
-            "target": true
-          },
-          {
-            "name": "condition",
+            "name": "a",
             "type": "array",
             "target": true,
-            "optional": true
+            "description": "Source series A"
           },
           {
-            "name": "condition_2",
+            "name": "b",
             "type": "array",
             "target": true,
-            "optional": true
-          },
-          {
-            "name": "condition_3",
-            "type": "array",
-            "target": true,
-            "optional": true
-          },
-          {
-            "name": "condition_4",
-            "type": "array",
-            "target": true,
-            "optional": true
-          },
-          {
-            "name": "baseline",
-            "type": "array",
-            "target": true,
-            "optional": true
+            "description": "Source series B"
           }
         ],
-        "Outputs": [],
-        "id": "plot_macd",
-        "nodeKey": "plot",
-        "isPlotNode": true,
+        "Outputs": [
+          {
+            "name": "result",
+            "type": "array",
+            "source": true,
+            "description": "Boolean array — true at crossover bars"
+          }
+        ],
+        "id": "buy_sig",
+        "nodeKey": "crossover",
+        "isPlotNode": false,
         "isDrawingNode": false,
-        "plotType": "line",
-        "plotConfig": {
-          "type": "line",
-          "color": "#3b82f6",
-          "lineWidth": 1,
-          "dash": "solid",
-          "opacity": 1,
-          "baseline": {
-            "mode": "bottom",
-            "value": 0
-          },
-          "group": "macd"
-        },
-        "defaultConfig": {
-          "type": "line",
-          "color": "#3b82f6",
-          "lineWidth": 1,
-          "dash": "solid",
-          "opacity": 1,
-          "baseline": {
-            "mode": "bottom",
-            "value": 0
-          },
-          "group": "macd"
-        },
-        "inputValues": {
-          "group": "macd"
-        },
+        "plotType": null,
+        "plotConfig": null,
+        "defaultConfig": null,
+        "inputValues": {},
+        "Icon": "up-1",
         "isCollapsed": false
       }
     },
     {
-      "id": "plot_signal",
+      "id": "sell_sig",
       "type": "customNode",
       "position": {
         "x": 640,
-        "y": 920
+        "y": 985
       },
       "data": {
-        "Name": "Plot",
-        "Description": "Plot series on chart",
-        "Type": "Plot",
+        "Name": "Crossunder",
+        "Description": "True when series A crosses below series B (was ≥ prev bar, now <)",
+        "Type": "PineScript",
         "Inputs": [
           {
-            "name": "series",
-            "type": "array",
-            "target": true
-          },
-          {
-            "name": "condition",
+            "name": "a",
             "type": "array",
             "target": true,
-            "optional": true
+            "description": "Source series A"
           },
           {
-            "name": "condition_2",
+            "name": "b",
             "type": "array",
             "target": true,
-            "optional": true
-          },
-          {
-            "name": "condition_3",
-            "type": "array",
-            "target": true,
-            "optional": true
-          },
-          {
-            "name": "condition_4",
-            "type": "array",
-            "target": true,
-            "optional": true
-          },
-          {
-            "name": "baseline",
-            "type": "array",
-            "target": true,
-            "optional": true
+            "description": "Source series B"
           }
         ],
-        "Outputs": [],
-        "id": "plot_signal",
-        "nodeKey": "plot",
-        "isPlotNode": true,
+        "Outputs": [
+          {
+            "name": "result",
+            "type": "array",
+            "source": true,
+            "description": "Boolean array — true at crossunder bars"
+          }
+        ],
+        "id": "sell_sig",
+        "nodeKey": "crossunder",
+        "isPlotNode": false,
         "isDrawingNode": false,
-        "plotType": "line",
-        "plotConfig": {
-          "type": "line",
-          "color": "#3b82f6",
-          "lineWidth": 1,
-          "dash": "solid",
-          "opacity": 1,
-          "baseline": {
-            "mode": "bottom",
-            "value": 0
+        "plotType": null,
+        "plotConfig": null,
+        "defaultConfig": null,
+        "inputValues": {},
+        "Icon": "down-1",
+        "isCollapsed": false
+      }
+    },
+    {
+      "id": "bt",
+      "type": "customNode",
+      "position": {
+        "x": 940,
+        "y": 40
+      },
+      "data": {
+        "Name": "Strategy Run",
+        "Description": "All-in-one backtest engine with full per-trade ledger, state series, payoff/Ulcer metrics. Drop-in upgrade for Trade Execution. Phase 1 of strategy framework.",
+        "Type": "Strategy",
+        "Inputs": [
+          {
+            "name": "long_when",
+            "type": "array",
+            "target": true,
+            "optional": true,
+            "default": null
           },
-          "group": "macd"
-        },
-        "defaultConfig": {
-          "type": "line",
-          "color": "#3b82f6",
-          "lineWidth": 1,
-          "dash": "solid",
-          "opacity": 1,
-          "baseline": {
-            "mode": "bottom",
-            "value": 0
+          {
+            "name": "short_when",
+            "type": "array",
+            "target": true,
+            "optional": true,
+            "default": null
           },
-          "group": "macd"
-        },
+          {
+            "name": "exit_when",
+            "type": "array",
+            "target": true,
+            "optional": true,
+            "default": null
+          },
+          {
+            "name": "stop_loss",
+            "type": "array",
+            "target": true,
+            "optional": true,
+            "default": null
+          },
+          {
+            "name": "take_profit",
+            "type": "array",
+            "target": true,
+            "optional": true,
+            "default": null
+          }
+        ],
+        "Outputs": [
+          {
+            "name": "result",
+            "type": "object",
+            "source": true
+          },
+          {
+            "name": "trades",
+            "type": "array",
+            "source": true
+          },
+          {
+            "name": "equity_curve",
+            "type": "array",
+            "source": true
+          },
+          {
+            "name": "state_series",
+            "type": "array",
+            "source": true
+          },
+          {
+            "name": "metrics",
+            "type": "object",
+            "source": true
+          },
+          {
+            "name": "final_equity",
+            "type": "number",
+            "source": true
+          }
+        ],
+        "id": "bt",
+        "nodeKey": "strategy.run",
+        "isPlotNode": false,
+        "isDrawingNode": false,
+        "plotType": null,
+        "plotConfig": null,
+        "defaultConfig": null,
         "inputValues": {
-          "group": "macd"
+          "17": "0.02",
+          "18": "0.05",
+          "default_stop_pct": "0.02",
+          "default_take_pct": "0.05"
         },
+        "Parameters": {
+          "initial_capital": {
+            "Type": "Number",
+            "Default": 10000,
+            "Description": "Starting capital",
+            "Min": 100,
+            "Max": 10000000,
+            "Step": 100
+          },
+          "currency": {
+            "Type": "Select",
+            "Default": "USD",
+            "Options": [
+              "USD",
+              "EUR",
+              "GBP",
+              "JPY",
+              "BTC",
+              "USDT"
+            ],
+            "Description": "Quote currency for reporting"
+          },
+          "asset_class": {
+            "Type": "Select",
+            "Default": "crypto",
+            "Options": [
+              "crypto",
+              "stocks",
+              "forex"
+            ],
+            "Description": "Asset class"
+          },
+          "fill_model": {
+            "Type": "Select",
+            "Default": "vectorized",
+            "Options": [
+              "vectorized",
+              "bar_stepped",
+              "tick_stepped"
+            ],
+            "Description": "Fill simulation: vectorized (fast), bar_stepped (Pine-grade), tick_stepped (MT5-grade)"
+          },
+          "risk_model": {
+            "Type": "Select",
+            "Default": "fixed_qty",
+            "Options": [
+              "fixed_qty",
+              "risk_percent"
+            ],
+            "Description": "Position sizing model"
+          },
+          "risk_per_trade": {
+            "Type": "Number",
+            "Default": 0.02,
+            "Min": 0.001,
+            "Max": 0.1,
+            "Step": 0.001,
+            "Description": "Risk % per trade for risk_percent model"
+          },
+          "fixed_quantity": {
+            "Type": "Number",
+            "Default": 0.1,
+            "Min": 0.001,
+            "Max": 10000,
+            "Step": 0.001,
+            "Description": "Fixed position size for fixed_qty model"
+          },
+          "leverage": {
+            "Type": "Number",
+            "Default": 1,
+            "Min": 1,
+            "Max": 100,
+            "Step": 0.5,
+            "Description": "Account leverage (1.0 = cash, no margin)"
+          },
+          "allow_short": {
+            "Type": "Boolean",
+            "Default": true,
+            "Description": "Allow short positions"
+          },
+          "allow_pyramiding": {
+            "Type": "Boolean",
+            "Default": false,
+            "Description": "Allow multiple concurrent positions"
+          },
+          "max_open_positions": {
+            "Type": "Number",
+            "Default": 1,
+            "Min": 1,
+            "Max": 100,
+            "Step": 1,
+            "Description": "Max concurrent positions"
+          },
+          "pyramiding_avg_entry": {
+            "Type": "Boolean",
+            "Default": false,
+            "Description": "Average new pyramid entries into existing position rather than separate"
+          },
+          "default_stop_pct": {
+            "Type": "Number",
+            "Default": null,
+            "Min": 0.001,
+            "Max": 0.5,
+            "Step": 0.001,
+            "Description": "Default stop-loss % (used when no SL on entry)"
+          },
+          "default_take_pct": {
+            "Type": "Number",
+            "Default": null,
+            "Min": 0.001,
+            "Max": 1,
+            "Step": 0.001,
+            "Description": "Default take-profit %"
+          },
+          "trailing_stop_pct": {
+            "Type": "Number",
+            "Default": null,
+            "Min": 0.001,
+            "Max": 0.5,
+            "Step": 0.001,
+            "Description": "Trailing stop % below peak"
+          },
+          "trailing_stop_fixed": {
+            "Type": "Number",
+            "Default": null,
+            "Min": 0.01,
+            "Max": 100000,
+            "Step": 0.01,
+            "Description": "Trailing stop fixed price distance"
+          },
+          "break_even_trigger_pct": {
+            "Type": "Number",
+            "Default": null,
+            "Min": 0.001,
+            "Max": 0.5,
+            "Step": 0.001,
+            "Description": "Move stop to BE when profit hits %"
+          },
+          "commission_type": {
+            "Type": "Select",
+            "Default": "percent",
+            "Options": [
+              "percent",
+              "per_lot",
+              "per_trade"
+            ],
+            "Description": "Commission model"
+          },
+          "commission_value": {
+            "Type": "Number",
+            "Default": 0.001,
+            "Min": 0,
+            "Max": 100,
+            "Step": 0.0001,
+            "Description": "Commission amount (per model)"
+          },
+          "fee_rate": {
+            "Type": "Number",
+            "Default": 0.001,
+            "Min": 0,
+            "Max": 0.05,
+            "Step": 0.0001,
+            "Description": "Legacy fee rate fallback"
+          },
+          "spread_pips": {
+            "Type": "Number",
+            "Default": 0,
+            "Min": 0,
+            "Max": 100,
+            "Step": 0.1,
+            "Description": "Spread in pips"
+          },
+          "tick_size": {
+            "Type": "Number",
+            "Default": 0.01,
+            "Min": 0.000001,
+            "Max": 100,
+            "Step": 0.000001,
+            "Description": "Minimum price increment"
+          },
+          "slippage": {
+            "Type": "Number",
+            "Default": 0.0005,
+            "Min": 0,
+            "Max": 0.01,
+            "Step": 0.0001,
+            "Description": "Slippage % on fills"
+          },
+          "swap_long": {
+            "Type": "Number",
+            "Default": 0,
+            "Min": -0.01,
+            "Max": 0.01,
+            "Step": 0.00001,
+            "Description": "Daily long swap rate"
+          },
+          "swap_short": {
+            "Type": "Number",
+            "Default": 0,
+            "Min": -0.01,
+            "Max": 0.01,
+            "Step": 0.00001,
+            "Description": "Daily short swap rate"
+          },
+          "daily_loss_limit_pct": {
+            "Type": "Number",
+            "Default": null,
+            "Min": 0.001,
+            "Max": 1,
+            "Step": 0.001,
+            "Description": "Halt for the day at loss %"
+          },
+          "max_drawdown_limit_pct": {
+            "Type": "Number",
+            "Default": null,
+            "Min": 0.01,
+            "Max": 1,
+            "Step": 0.01,
+            "Description": "Halt all trading at DD %"
+          },
+          "max_consecutive_losses": {
+            "Type": "Number",
+            "Default": null,
+            "Min": 1,
+            "Max": 100,
+            "Step": 1,
+            "Description": "Halt after N consecutive losses"
+          }
+        },
+        "Color": "#FF6B35",
+        "Icon": "wallet",
         "isCollapsed": false
       }
     },
@@ -343,7 +592,7 @@
       "type": "customNode",
       "position": {
         "x": 640,
-        "y": 1276
+        "y": 1161
       },
       "data": {
         "Name": "Plot",
@@ -394,7 +643,7 @@
         "plotType": "histogram",
         "plotConfig": {
           "type": "histogram",
-          "color": "#3b82f6",
+          "color": "#888888",
           "lineWidth": 1,
           "dash": "solid",
           "opacity": 1,
@@ -406,7 +655,7 @@
         },
         "defaultConfig": {
           "type": "histogram",
-          "color": "#3b82f6",
+          "color": "#888888",
           "lineWidth": 1,
           "dash": "solid",
           "opacity": 1,
@@ -417,8 +666,280 @@
           "group": "macd"
         },
         "inputValues": {
+          "type": "histogram",
+          "group": "macd",
+          "baseline": "zero",
+          "color": "#888888"
+        },
+        "isCollapsed": false
+      }
+    },
+    {
+      "id": "plot_macd",
+      "type": "customNode",
+      "position": {
+        "x": 643.0314331330208,
+        "y": 1573.0815129608845
+      },
+      "data": {
+        "Name": "Plot",
+        "Description": "Plot series on chart",
+        "Type": "Plot",
+        "Inputs": [
+          {
+            "name": "series",
+            "type": "array",
+            "target": true
+          },
+          {
+            "name": "condition",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_2",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_3",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_4",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "baseline",
+            "type": "array",
+            "target": true,
+            "optional": true
+          }
+        ],
+        "Outputs": [],
+        "id": "plot_macd",
+        "nodeKey": "plot",
+        "isPlotNode": true,
+        "isDrawingNode": false,
+        "plotType": "line",
+        "plotConfig": {
+          "type": "line",
+          "color": "#2962ff",
+          "lineWidth": 2,
+          "dash": "solid",
+          "opacity": 1,
+          "baseline": {
+            "mode": "bottom",
+            "value": 0
+          },
           "group": "macd"
         },
+        "defaultConfig": {
+          "type": "line",
+          "color": "#2962ff",
+          "lineWidth": 2,
+          "dash": "solid",
+          "opacity": 1,
+          "baseline": {
+            "mode": "bottom",
+            "value": 0
+          },
+          "group": "macd"
+        },
+        "inputValues": {
+          "group": "macd",
+          "color": "#2962ff",
+          "line_width": "2"
+        },
+        "isCollapsed": false
+      }
+    },
+    {
+      "id": "plot_signal",
+      "type": "customNode",
+      "position": {
+        "x": 640,
+        "y": 1873
+      },
+      "data": {
+        "Name": "Plot",
+        "Description": "Plot series on chart",
+        "Type": "Plot",
+        "Inputs": [
+          {
+            "name": "series",
+            "type": "array",
+            "target": true
+          },
+          {
+            "name": "condition",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_2",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_3",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "condition_4",
+            "type": "array",
+            "target": true,
+            "optional": true
+          },
+          {
+            "name": "baseline",
+            "type": "array",
+            "target": true,
+            "optional": true
+          }
+        ],
+        "Outputs": [],
+        "id": "plot_signal",
+        "nodeKey": "plot",
+        "isPlotNode": true,
+        "isDrawingNode": false,
+        "plotType": "line",
+        "plotConfig": {
+          "type": "line",
+          "color": "#ff9800",
+          "lineWidth": 2,
+          "dash": "solid",
+          "opacity": 1,
+          "baseline": {
+            "mode": "bottom",
+            "value": 0
+          },
+          "group": "macd"
+        },
+        "defaultConfig": {
+          "type": "line",
+          "color": "#ff9800",
+          "lineWidth": 2,
+          "dash": "solid",
+          "opacity": 1,
+          "baseline": {
+            "mode": "bottom",
+            "value": 0
+          },
+          "group": "macd"
+        },
+        "inputValues": {
+          "group": "macd",
+          "color": "#ff9800",
+          "line_width": "2"
+        },
+        "isCollapsed": false
+      }
+    },
+    {
+      "id": "pt",
+      "type": "customNode",
+      "position": {
+        "x": 1240,
+        "y": 344
+      },
+      "data": {
+        "Name": "Plot Trades",
+        "Description": "Render trade overlays on the chart: position zones, SL/TP rails, MFE/MAE bands, entry/exit markers. Wire `trades` from STRATEGY.RUN/ENGINE/PAPER. Replaces the implicit auto-overlay; multiple PLOT.TRADES nodes can show different result sources side-by-side.",
+        "Type": "Plot",
+        "Inputs": [
+          {
+            "name": "trades",
+            "type": "array",
+            "target": true
+          },
+          {
+            "name": "result",
+            "type": "object",
+            "target": true,
+            "optional": true,
+            "default": null
+          }
+        ],
+        "Outputs": [
+          {
+            "name": "primitives",
+            "type": "array",
+            "source": true
+          }
+        ],
+        "id": "pt",
+        "nodeKey": "plot.trades",
+        "isPlotNode": false,
+        "isDrawingNode": false,
+        "plotType": null,
+        "plotConfig": null,
+        "defaultConfig": null,
+        "inputValues": {
+          "3": "true",
+          "4": "true",
+          "show_position_zones": "true",
+          "show_sl_tp_rails": "true"
+        },
+        "Parameters": {
+          "show_markers": {
+            "Type": "Boolean",
+            "Default": true,
+            "Description": "Entry / exit triangle markers"
+          },
+          "show_position_zones": {
+            "Type": "Boolean",
+            "Default": true,
+            "Description": "Translucent rect entry → exit, color = pnl"
+          },
+          "show_sl_tp_rails": {
+            "Type": "Boolean",
+            "Default": true,
+            "Description": "Stop-loss + take-profit horizontal rails"
+          },
+          "show_mfe_mae_bands": {
+            "Type": "Boolean",
+            "Default": false,
+            "Description": "Best/worst price excursion bands (advanced)"
+          },
+          "win_color": {
+            "Type": "Color",
+            "Default": "#22c55e",
+            "Description": "Winning trade color"
+          },
+          "loss_color": {
+            "Type": "Color",
+            "Default": "#ef4444",
+            "Description": "Losing trade color"
+          },
+          "sl_color": {
+            "Type": "Color",
+            "Default": "#ef4444",
+            "Description": "Stop-loss rail color"
+          },
+          "tp_color": {
+            "Type": "Color",
+            "Default": "#22c55e",
+            "Description": "Take-profit rail color"
+          },
+          "highlight_trade_id": {
+            "Type": "String",
+            "Default": "",
+            "Description": "Trade ID rendered with thicker border (Trades-tab click-to-zoom)"
+          }
+        },
+        "Color": "#FF6B35",
+        "Icon": "location",
         "isCollapsed": false
       }
     }
@@ -429,49 +950,84 @@
       "sourceHandle": "output-3",
       "target": "macd",
       "targetHandle": "input-0",
-      "id": "mdoutput-3-macdinput-0-1779622248691-o9xninzoq"
+      "id": "mdoutput-3-macdinput-0-1781013899772-vficnic4z"
+    },
+    {
+      "source": "macd",
+      "sourceHandle": "output-0",
+      "target": "buy_sig",
+      "targetHandle": "input-0",
+      "id": "macdoutput-0-buy_siginput-0-1781013899772-kwx9slibd"
+    },
+    {
+      "source": "macd",
+      "sourceHandle": "output-1",
+      "target": "buy_sig",
+      "targetHandle": "input-1",
+      "id": "macdoutput-1-buy_siginput-1-1781013899772-h210k3nbb"
+    },
+    {
+      "source": "macd",
+      "sourceHandle": "output-0",
+      "target": "sell_sig",
+      "targetHandle": "input-0",
+      "id": "macdoutput-0-sell_siginput-0-1781013899772-l2baif6db"
+    },
+    {
+      "source": "macd",
+      "sourceHandle": "output-1",
+      "target": "sell_sig",
+      "targetHandle": "input-1",
+      "id": "macdoutput-1-sell_siginput-1-1781013899772-agfcjky1d"
+    },
+    {
+      "source": "buy_sig",
+      "sourceHandle": "output-0",
+      "target": "bt",
+      "targetHandle": "input-0",
+      "id": "buy_sigoutput-0-btinput-0-1781013899772-hbz1zhonf"
+    },
+    {
+      "source": "sell_sig",
+      "sourceHandle": "output-0",
+      "target": "bt",
+      "targetHandle": "input-1",
+      "id": "sell_sigoutput-0-btinput-1-1781013899772-7k9icqdsx"
+    },
+    {
+      "source": "macd",
+      "sourceHandle": "output-2",
+      "target": "plot_hist",
+      "targetHandle": "input-0",
+      "id": "macdoutput-2-plot_histinput-0-1781013899772-b2bqxfmli"
     },
     {
       "source": "macd",
       "sourceHandle": "output-0",
       "target": "plot_macd",
       "targetHandle": "input-0",
-      "id": "macdoutput-0-plot_macdinput-0-1779622248691-k7cp39lw1"
+      "id": "macdoutput-0-plot_macdinput-0-1781013899772-7e1r2i18f"
     },
     {
       "source": "macd",
-      "sourceHandle": "output-0",
-      "target": "plot_macd",
-      "targetHandle": "input-0",
-      "id": "macdoutput-0-plot_macdinput-0-1779622248691-2aq9iqaez"
-    },
-    {
-      "source": "macd",
-      "sourceHandle": "output-0",
+      "sourceHandle": "output-1",
       "target": "plot_signal",
       "targetHandle": "input-0",
-      "id": "macdoutput-0-plot_signalinput-0-1779622248691-zkx3nr2ek"
+      "id": "macdoutput-1-plot_signalinput-0-1781013899772-xvjpgil4t"
     },
     {
-      "source": "macd",
-      "sourceHandle": "output-0",
-      "target": "plot_signal",
+      "source": "bt",
+      "sourceHandle": "output-1",
+      "target": "pt",
       "targetHandle": "input-0",
-      "id": "macdoutput-0-plot_signalinput-0-1779622248691-j36ly3336"
+      "id": "btoutput-1-ptinput-0-1781013899772-6520telvl"
     },
     {
-      "source": "macd",
+      "source": "bt",
       "sourceHandle": "output-0",
-      "target": "plot_hist",
-      "targetHandle": "input-0",
-      "id": "macdoutput-0-plot_histinput-0-1779622248691-13ucxh1sn"
-    },
-    {
-      "source": "macd",
-      "sourceHandle": "output-0",
-      "target": "plot_hist",
-      "targetHandle": "input-0",
-      "id": "macdoutput-0-plot_histinput-0-1779622248691-vlos5y3d0"
+      "target": "pt",
+      "targetHandle": "input-1",
+      "id": "btoutput-0-ptinput-1-1781013899772-jzrack6w3"
     }
   ]
 }

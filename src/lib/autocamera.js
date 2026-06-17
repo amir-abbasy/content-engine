@@ -182,25 +182,100 @@ export function buildAutoCamera(inputEvents, cfg = {}) {
   // 3500ms covers the typical drag→palette gap (~2700ms plan-time, perceived
   // as back-to-back after per-beat speed compression). Anything wider is a
   // genuine pause and gets a real wide-view rest. Tune via cfg.bounceMergeMs.
-  return smoothBackToBackBounces(kfs, restZoom, cfg.bounceMergeMs ?? 3500);
+  return smoothBackToBackBounces(kfs, restZoom, cfg.bounceMergeMs ?? 3500, cfg.bouncePanMs ?? 900);
 }
 
-function smoothBackToBackBounces(kfs, restZoom, mergeMs) {
+// Best selector to frame an anchor keyframe with. `framePair` ones already
+// carry an .a/.b; settings hold on a single selector; drag arrives on a
+// framePair. Returns null when no selector can be derived (e.g. a `point`
+// anchor with no element to box-fit).
+function bridgeSel(anchor) {
+  if (!anchor) return null;
+  if (anchor.framePair?.b) return anchor.framePair.b;
+  if (anchor.framePair?.a) return anchor.framePair.a;
+  if (anchor.focusSelector) return anchor.focusSelector;
+  if (anchor.selector) return anchor.selector;
+  return null;
+}
+function makeBridgePair(a, b) {
+  const sa = bridgeSel(a);
+  const sb = bridgeSel(b);
+  return sa && sb && sa !== sb ? { a: sa, b: sb } : null;
+}
+
+function smoothBackToBackBounces(kfs, restZoom, mergeMs, panMs) {
   if (kfs.length < 4) return kfs;
   const isRest = (kf) => (kf.zoom || 1) <= restZoom + 0.05;
   const zoomedIdx = [];
   kfs.forEach((kf, i) => { if (!isRest(kf)) zoomedIdx.push(i); });
   if (zoomedIdx.length < 2) return kfs;
+  // Between two close-enough zoom-ins: drop every intermediate rest kf
+  // (their positions point at the wide pane or the previous-session rest
+  // spot — interpolating across them slow-pans the camera to nowhere
+  // useful), then insert ONE "hold on previous hotspot" kf so the camera
+  // sits on the just-completed action until ~PAN_MS before the next one,
+  // and leads the cursor over that final window.
+  const drop = new Set();
+  const insertions = []; // { afterIdx, kf }
   for (let k = 0; k < zoomedIdx.length - 1; k++) {
     const iA = zoomedIdx[k];
     const iB = zoomedIdx[k + 1];
-    if (iB - iA <= 1) continue; // no rest run in between
+    if (iB - iA <= 1) continue;
     const restDur = (kfs[iB].at - kfs[iA].at) * 1000;
-    if (restDur >= mergeMs) continue; // real gap — let the camera rest
-    const lift = Math.min(kfs[iA].zoom, kfs[iB].zoom);
+    if (restDur >= mergeMs) continue;
     for (let j = iA + 1; j < iB; j++) {
-      if (isRest(kfs[j])) kfs[j] = { ...kfs[j], zoom: lift };
+      if (isRest(kfs[j])) drop.add(j);
     }
+    // Skip the linger entirely when the gap is barely larger than the pan
+    // itself — adding a same-time keyframe in that case just duplicates iA
+    // and confuses the linear-interpolating crop.
+    if (restDur <= panMs + 80) continue;
+    // Hold the previous hotspot's framing — but anchor the hold to the
+    // NEXT zoom-in so its fire time tracks where the camera actually
+    // needs to be moving toward (drift-safe under slow cursors). For
+    // widely-spaced consecutive hotspots (e.g. macd's strategy node at
+    // y=40 right after a plot at y=1873), we replace the static linger
+    // with a `framePair` between the two anchors — the fit-zoom logic
+    // pulls the camera back during the transition so the user sees a
+    // brief context shot instead of a slow drift at high zoom.
+    const anchorA = kfs[iA];
+    const anchorB = kfs[iB];
+    const lingerAt = Math.max(anchorA.at, anchorB.at - panMs / 1000);
+    const lingerTAnchor = anchorB.tAnchor
+      ? { ref: anchorB.tAnchor.ref, offsetMs: (anchorB.tAnchor.offsetMs || 0) - panMs }
+      : anchorA.tAnchor;
+    const bridgePair = makeBridgePair(anchorA, anchorB);
+    // Bridge framePair: NO focusSelector — that would trigger the wide-drag
+    // fallback in resolveCameraPoint and short-circuit our context shot for
+    // the very case we want it (far-apart hotspots producing zoom < 1.3).
+    // Letting the natural fit-zoom flow through gives a clean pull-out for
+    // distant pairs and a near-no-op for close ones.
+    const linger = bridgePair
+      ? {
+          at: Math.round(lingerAt * 100) / 100,
+          framePair: bridgePair,
+          zoom: anchorA.zoom,
+          ease: 'linear',
+          tAnchor: lingerTAnchor,
+        }
+      : {
+          ...anchorA,
+          at: Math.round(lingerAt * 100) / 100,
+          ease: 'linear',
+          tAnchor: lingerTAnchor,
+        };
+    insertions.push({ afterIdx: iA, kf: linger });
   }
-  return kfs;
+  if (!drop.size && !insertions.length) return kfs;
+  const kept = kfs.filter((_, i) => !drop.has(i));
+  // Splice insertions in by their original anchor's position in `kept`.
+  for (const { afterIdx, kf } of insertions) {
+    const anchorRef = kfs[afterIdx];
+    const newIdx = kept.indexOf(anchorRef);
+    if (newIdx >= 0) kept.splice(newIdx + 1, 0, kf);
+  }
+  // Final sort by time — a hold inserted late could otherwise sit before
+  // an earlier-merged neighbour and confuse the linear-interpolating crop.
+  kept.sort((a, b) => (a.at || 0) - (b.at || 0));
+  return kept;
 }

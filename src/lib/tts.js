@@ -118,7 +118,7 @@ function scaledWordTimings(text, durationMs) {
 //   • provider 'elevenlabs' — drive elevenlabs.io via the saved login session.
 //   • provider 'local'      — Windows SAPI (offline) / silent estimate.
 //   • provider 'auto'       — ElevenLabs if a login file exists, else local.
-export async function createVoice({ provider = 'auto', authFile = null, voice = 'Alex', headless = true, chromePort = null, verbose = false, keepOpen = false } = {}) {
+export async function createVoice({ provider = 'auto', authFile = null, voice = 'Alex', headless = true, chromePort = null, chromeHeadless = false, verbose = false, keepOpen = false } = {}) {
   const haveAuth = authFile && fs.existsSync(authFile);
   // Attaching to a running Chrome wins everything else — no login, no captcha.
   const useEleven = provider === 'elevenlabs' || chromePort || (provider === 'auto' && haveAuth);
@@ -127,9 +127,9 @@ export async function createVoice({ provider = 'auto', authFile = null, voice = 
     const el = await import('./elevenlabs.js');
     let session = null;
     return {
-      engine: chromePort ? 'elevenlabs (attached)' : 'elevenlabs',
+      engine: chromePort ? `elevenlabs (attached${chromeHeadless ? ', headless' : ''})` : 'elevenlabs',
       async synth(text, { audioPath } = {}) {
-        if (!session) session = await el.openSession({ headless, voice, authFile, chromePort, verbose, keepOpen });
+        if (!session) session = await el.openSession({ headless, voice, authFile, chromePort, chromeHeadless, verbose, keepOpen });
         const { buffer, ext, alignment } = await el.synthLine(session, text);
         const outPath = audioPath ? audioPath.replace(/\.[^.]+$/, `.${ext}`) : null;
         if (outPath) fs.writeFileSync(outPath, buffer);

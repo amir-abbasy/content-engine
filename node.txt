@@ -8,6 +8,15 @@ loading
 focus
 
 
+# Test it first (2 synths, no visible window)
+node scripts/test-voice.js Alex --chrome-headless --count=2
+
+# Then produce headless
+npm run produce macd --chrome-headless --voice=Alex
+
+
+
+
 
 npm run produce candles --voice=Alex
 
@@ -20,6 +29,10 @@ npm run produce -- macd --chrome --voice Alex
 # Form 3: direct node (no npm interpretation at all)
 node scripts/produce.js macd --chrome --voice Alex
 
+
+npm run produce ema --chrome-headless --voice=Alex
+
+npm run produce ema --chrome-headless --mute
 
 
 

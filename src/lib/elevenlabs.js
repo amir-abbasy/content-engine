@@ -132,7 +132,7 @@ export async function login(authFile, { timeoutMs = 240_000 } = {}) {
 //                   real logged-in session; no extra login dance).
 //   • authFile    — reuse a session saved by login() (headless after one-time).
 //   • neither     — anonymous; will 401 on the TTS request.
-export async function openSession({ headless = true, voice = 'Alex', selectors = {}, authFile = null, chromePort = null, verbose = false, keepOpen = false } = {}) {
+export async function openSession({ headless = true, voice = 'Alex', selectors = {}, authFile = null, chromePort = null, chromeHeadless = false, verbose = false, keepOpen = false } = {}) {
   const sel = { ...SEL, ...selectors };
   let browser, context, attached = false;
 
@@ -147,9 +147,17 @@ export async function openSession({ headless = true, voice = 'Alex', selectors =
       // Auto-launch the helper Chrome (detached, so it outlives this process)
       // and retry the attach. Removes the two-terminal dance — first run opens
       // a Chrome window; you sign into ElevenLabs once and it stays.
-      log.warn(`  no Chrome on ${endpoint} — launching one for you (sign in once if needed)…`);
-      const { launchChromeDetached, waitForPort } = await import('./chrome.js');
-      try { launchChromeDetached({ port: chromePort }); } catch (e2) {
+      const { launchChromeDetached, waitForPort, profileExists } = await import('./chrome.js');
+      // Headless reuse needs an already-signed-in profile. If the dedicated
+      // profile is fresh, force a HEADED launch so the user can sign in — a
+      // headless window could never show the login form or a captcha.
+      const signedInBefore = profileExists();
+      const useHeadless = chromeHeadless && signedInBefore;
+      if (chromeHeadless && !signedInBefore) {
+        log.warn('  --chrome-headless requested but the debug profile is fresh — launching HEADED so you can sign into ElevenLabs once. Headless will work on the next run.');
+      }
+      log.warn(`  no Chrome on ${endpoint} — launching ${useHeadless ? 'a headless' : 'one'} for you (sign in once if needed)…`);
+      try { launchChromeDetached({ port: chromePort, headless: useHeadless }); } catch (e2) {
         throw new Error(`Could not auto-launch Chrome: ${e2.message}. Set CHROME_PATH or run "npm run chrome" yourself.`);
       }
       if (!(await waitForPort(chromePort, 25_000))) {
@@ -288,7 +296,32 @@ export async function openSession({ headless = true, voice = 'Alex', selectors =
 // (3) try exact then partial match, (4) scroll the list to load virtualized
 // options, (5) dump available names if still not found, (6) verify by reading
 // the trigger label after the click and surface a LOUD warning on mismatch.
-async function pickVoice(session) {
+// Public wrapper: run the picker under a hard watchdog so a headless hang turns
+// into a screenshot + diagnostic instead of stalling the whole produce run.
+async function pickVoice(session, { watchdogMs = 45_000 } = {}) {
+  const { page } = session;
+  let timer;
+  const watchdog = new Promise((_, reject) => {
+    timer = setTimeout(async () => {
+      // Always dump artifacts here even if verbose was off — this is exactly
+      // when the user needs to SEE what the headless picker was looking at.
+      try {
+        fs.mkdirSync(DEBUG_DIR, { recursive: true });
+        await page.screenshot({ path: path.join(DEBUG_DIR, 'picker-HANG.png'), fullPage: true }).catch(() => {});
+      } catch {}
+      const opts = await page.locator('[role="option"]').allInnerTexts().catch(() => []);
+      const sample = [...new Set(opts.map((n) => n.replace(/\s+/g, ' ').trim()).filter(Boolean))].slice(0, 12).join(' · ');
+      reject(new Error(`voice picker timed out after ${Math.round(watchdogMs / 1000)}s (headless render likely differs). Page: ${page.url()}. Options seen: ${sample || '<none>'}. Screenshot → ${path.relative(ROOT, path.join(DEBUG_DIR, 'picker-HANG.png'))}. Try a headed run (drop --chrome-headless) to compare.`));
+    }, watchdogMs);
+  });
+  try {
+    return await Promise.race([pickVoiceInner(session), watchdog]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function pickVoiceInner(session) {
   const { page, sel, voice, verbose } = session;
   const wantedRe = new RegExp(`\\b${voice.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
 
@@ -323,9 +356,22 @@ async function pickVoice(session) {
   log.info('  picker: opening voice list…');
   await page.click(sel.voiceButton, { timeout: 8000 });
   const list = page.locator(sel.voiceList).first();
-  await list.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
+  const listVisible = await list.waitFor({ state: 'visible', timeout: 8000 }).then(() => true).catch(() => false);
   await dwell();
   await shot('02-picker-open');
+  if (!listVisible) {
+    // The popover didn't render (common headless difference). Try once more —
+    // some builds open the list on a second click / on focus — then give up
+    // fast rather than letting downstream locator.evaluate() auto-wait 30s each.
+    log.warn('  picker: voice list not visible after click — retrying once…');
+    await page.click(sel.voiceButton, { timeout: 4000 }).catch(() => {});
+    const ok = await list.waitFor({ state: 'visible', timeout: 4000 }).then(() => true).catch(() => false);
+    if (!ok) {
+      fs.mkdirSync(DEBUG_DIR, { recursive: true });
+      await page.screenshot({ path: path.join(DEBUG_DIR, 'picker-NOLIST.png'), fullPage: true }).catch(() => {});
+      throw new Error(`voice picker popover never opened (selector "${sel.voiceList}"). In headless the dropdown may render differently. Screenshot → ${path.relative(ROOT, path.join(DEBUG_DIR, 'picker-NOLIST.png'))}. Drop --chrome-headless for a headed run, or the picker selector needs updating.`);
+    }
+  }
 
   // 3) Filter via a search box that is INSIDE the popover (avoid stray inputs).
   const popoverSearch = list.locator('input, [role="searchbox"]').first();
@@ -351,13 +397,22 @@ async function pickVoice(session) {
 
   let opt = await findOption();
 
-  // 5) Scroll the virtualized list to discover more options if needed.
+  // 5) Scroll the virtualized list to discover more options if needed. Use a
+  //    SHORT explicit timeout on evaluate so a vanished popover can't make each
+  //    iteration auto-wait the 30s default (that was the multi-minute headless
+  //    hang). Fall back to a wheel scroll over the list's center.
   if (!opt) {
     for (let i = 0; i < 14 && !opt; i++) {
-      await list.evaluate((el) => {
+      const scrolled = await list.evaluate((el) => {
         const scroller = el.querySelector('[data-rac][role="listbox"]') || el;
         scroller.scrollBy(0, 400);
-      }).catch(async () => { await page.mouse.wheel(0, 400); });
+        return true;
+      }, undefined, { timeout: 1500 }).catch(() => false);
+      if (!scrolled) {
+        const box = await list.boundingBox().catch(() => null);
+        if (box) { await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.wheel(0, 400); }
+        else break; // list is gone — stop scrolling, fall through to diagnostic
+      }
       await page.waitForTimeout(220);
       opt = await findOption();
     }
